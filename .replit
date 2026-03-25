@@ -1,0 +1,58 @@
+modules = ["nodejs-20", "bash", "web"]
+
+[nix]
+channel = "stable-25_05"
+
+[agent]
+expertMode = true
+
+[userenv]
+
+[userenv.shared]
+APP_URL = "https://9688fb40-970c-45d0-8836-e80ba3fa4952-00-3pma3wuvou8la.janeway.replit.dev"
+APP_ENV = "development"
+ALLOWED_ORIGINS = "https://9688fb40-970c-45d0-8836-e80ba3fa4952-00-3pma3wuvou8la.janeway.replit.dev"
+LOG_LEVEL = "info"
+CACHE_TTL_MS = "30000"
+PRISMA_CONNECTION_LIMIT = "10"
+RATE_LIMIT_WINDOW_MS = "900000"
+RATE_LIMIT_MAX_REQUESTS = "100"
+SOCKET_RATE_LIMIT_WINDOW_MS = "10000"
+SOCKET_RATE_LIMIT_MAX = "30"
+QUEUE_CONCURRENCY = "5"
+BACKUP_OUTPUT_DIR = "./backups"
+ADMIN_USERNAME = "admin"
+JWT_SECRET = "9b72f172a3af04e4514775c32c082f91dd096257b20fcebace31248557e4c6899a1cf899c0312dcea075e85ca4a2037f"
+ENCRYPTION_KEY = "5491a8748a20c4fb6753841a0cf1cf65"
+ADMIN_PASSWORD = "9-CpFwZeOiL8OBBR"
+VAPID_PUBLIC_KEY = "BNnn0VAw8PVBxoVM47drB3CCD8mj5ULGpyQu9MvcxGBFTYLvWsRUVhnV6Za9-hrDk5U7tlWE8qQnZNxrM7iINbg"
+VAPID_PRIVATE_KEY = "dFKF9n864hKazdd23SlPcWL_btqjl-DUznkGwRmHv28"
+VAPID_EMAIL = "mailto:admin@kingchat.app"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[ports]]
+localPort = 5000
+externalPort = 80

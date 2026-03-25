@@ -1,0 +1,24 @@
+export type DeliveryState = 'QUEUED' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED';
+
+export type SocketMessagePayload = {
+  id: string;
+  senderId: string;
+  recipientId?: string | null;
+  groupId?: string | null;
+  type: number;
+  ciphertext: string;
+  nonce: string;
+  fileUrl?: string | null;
+  fileName?: string | null;
+  fileSize?: number | null;
+  createdAt: string;
+  deliveryStatus: DeliveryState;
+  readAt?: string | null;
+  tempId?: string | null;
+  idempotencyKey?: string | null;
+  editedAt?: string | null;
+  replyToId?: string | null;
+  replyTo?: { id: string; senderId: string; ciphertext: string; nonce: string; createdAt: string; isDeleted?: boolean } | null;
+  reactions?: Array<{ emoji: string; userId: string; createdAt: string }> ;
+  _self?: boolean;
+};

@@ -1,0 +1,44 @@
+{
+  "name": "KiNGChat - Secure Messenger",
+  "short_name": "KiNGChat",
+  "description": "Privacy-first, self-hosted web messenger designed for resilience. End-to-end encrypted communication.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#09090b",
+  "theme_color": "#0f365b",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["social", "communication", "productivity"],
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Open Chat",
+      "short_name": "Chat",
+      "url": "/chat",
+      "description": "Go to your encrypted conversations"
+    },
+    {
+      "name": "Login",
+      "short_name": "Login",
+      "url": "/auth/login",
+      "description": "Sign in to your account"
+    }
+  ]
+}

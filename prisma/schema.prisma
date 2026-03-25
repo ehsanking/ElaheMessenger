@@ -1,0 +1,371 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+  // Supports both PostgreSQL (production/docker) and SQLite (local dev)
+  // Set DATABASE_URL env var to switch:
+  //   PostgreSQL: postgresql://user:pass@db:5432/kingchat
+  //   SQLite:     file:./dev.db
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  numericId    String   @unique
+  username     String   @unique
+  passwordHash String
+  displayName  String?
+  bio          String?
+  profilePhoto String?
+  role         String   @default("USER") // USER, ADMIN
+  badge        String?  // Support, Seller, Technical, Ads
+  isVerified   Boolean  @default(false)
+  isBanned     Boolean  @default(false)
+  needsPasswordChange Boolean @default(false)
+  failedLoginAttempts Int @default(0)
+  lockoutUntil DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // E2EE Public Keys (Identity Key + PreKeys)
+  identityKeyPublic String
+  signedPreKey      String
+  signedPreKeySig   String
+
+  // Signing public key used for E2EE v2.  Nullable to preserve backwards compatibility.
+  signingPublicKey  String?
+
+  /// Indicates which end‑to‑end encryption version the user has registered with.  Legacy accounts
+  /// default to "legacy" while v2 accounts will be set to "v2" after registration.  Adding
+  /// this field allows the server and clients to differentiate behaviour based on runtime features.
+  e2eeVersion       String   @default("legacy")
+
+  // 2FA (TOTP)
+  totpSecret    String?   // Base32-encoded TOTP secret
+  totpEnabled   Boolean   @default(false)
+
+  // Relationships
+  sentMessages     Message[]      @relation("SentMessages")
+  receivedMessages Message[]      @relation("ReceivedMessages")
+  groupMemberships GroupMember[]
+  reportsMade      Report[]       @relation("Reporter")
+  reportsGot       Report[]       @relation("Reported")
+  pushSubscriptions PushSubscription[]
+  auditLogsPerformed AuditLog[] @relation("AdminAuditLogs")
+  contactsOwned    Contact[]      @relation("ContactOwner")
+  contactsOf       Contact[]      @relation("ContactTarget")
+  messageReactions MessageReaction[]
+  messageDrafts    MessageDraft[]
+  devices          UserDevice[]
+  oneTimePreKeys   OneTimePreKey[]
+  keyEvents        E2EEKeyEvent[]
+
+  @@index([createdAt])
+  @@index([isBanned])
+  @@index([e2eeVersion])
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+
+model Message {
+  id          String   @id @default(uuid())
+  senderId    String
+  recipientId String?  // Null if group message
+  groupId     String?  // Null if 1:1 message
+  type        Int      // 0: text, 1: image, 2: file
+  ciphertext  String   // Encrypted payload
+  nonce       String   // IV for encryption
+  fileUrl     String?  // URL to the encrypted file
+  fileName    String?  // Original file name
+  fileSize    Int?     // File size in bytes
+
+  /// WrappedFileKey stores the encrypted file encryption key for phase 3 secure attachments.
+  wrappedFileKey      String?
+  /// Nonce used when wrapping the file key in secure attachments.
+  wrappedFileKeyNonce String?
+  /// Nonce used to encrypt the actual file contents in secure attachments.
+  fileNonce           String?
+  deliveryStatus String   @default("SENT") // QUEUED, SENT, DELIVERED, READ, FAILED
+  deliveredAt    DateTime?
+  readAt         DateTime?
+  retryCount     Int      @default(0)
+  lastError      String?
+  idempotencyKey String?
+  editedAt      DateTime?
+  replyToId     String?
+  createdAt   DateTime @default(now())
+  isDeleted   Boolean  @default(false)
+
+  sender    User   @relation("SentMessages", fields: [senderId], references: [id])
+  recipient User?  @relation("ReceivedMessages", fields: [recipientId], references: [id])
+  group     Group? @relation(fields: [groupId], references: [id])
+  replyTo   Message? @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   Message[] @relation("MessageReplies")
+  reactions MessageReaction[]
+
+  @@index([recipientId, createdAt])
+  @@index([senderId, createdAt])
+  @@index([groupId, createdAt])
+  @@index([recipientId, deliveryStatus, createdAt])
+  @@index([groupId, deliveryStatus, createdAt])
+  @@unique([senderId, idempotencyKey])
+}
+
+model MessageReaction {
+  id        String   @id @default(uuid())
+  messageId String
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model MessageDraft {
+  id              String   @id @default(uuid())
+  userId          String
+  conversationKey String
+  recipientId     String?
+  groupId         String?
+  ciphertext      String?
+  nonce           String?
+  clientDraft     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, conversationKey])
+  @@index([userId, updatedAt])
+}
+
+model Contact {
+  id        String   @id @default(uuid())
+  ownerId   String
+  contactId String
+  nickname  String?  // Optional alias for the contact
+  createdAt DateTime @default(now())
+
+  owner   User @relation("ContactOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  contact User @relation("ContactTarget", fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, contactId])
+  @@index([ownerId])
+}
+
+model Group {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  avatar      String?  // Group/Channel avatar image
+  type        String   @default("GROUP") // GROUP, CHANNEL
+  isPublic    Boolean  @default(false)
+  inviteLink  String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members  GroupMember[]
+  messages Message[]
+
+  @@index([type])
+  @@index([inviteLink])
+}
+
+model GroupMember {
+  id        String   @id @default(uuid())
+  groupId   String
+  userId    String
+  role      String   @default("MEMBER") // OWNER, ADMIN, MODERATOR, MEMBER
+  isMuted   Boolean  @default(false)
+  joinedAt  DateTime @default(now())
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([userId])
+}
+
+model Report {
+  id             String   @id @default(uuid())
+  reporterId     String
+  reportedUserId String
+  reason         String
+  status         String   @default("PENDING") // PENDING, RESOLVED, DISMISSED
+  createdAt      DateTime @default(now())
+
+  reporter     User @relation("Reporter", fields: [reporterId], references: [id])
+  reportedUser User @relation("Reported", fields: [reportedUserId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([reportedUserId])
+  @@index([reporterId])
+}
+
+model IpBan {
+  id        String   @id @default(uuid())
+  ip        String   @unique
+  reason    String?
+  createdAt DateTime @default(now())
+}
+
+model LoginAttempt {
+  id        String   @id @default(uuid())
+  ip        String
+  username  String?
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([ip, createdAt])
+  @@index([username, createdAt])
+}
+
+model AdminSettings {
+  id                 String  @id @default("1")
+  isSetupCompleted   Boolean @default(false)
+  isRegistrationEnabled Boolean @default(true)
+  maxRegistrations   Int?    // Null means infinite
+  isCaptchaEnabled    Boolean @default(true)
+  maxAttachmentSize  Int     @default(10485760) // 10MB
+  allowedFileFormats String  @default("*") // Comma separated extensions or * for all
+  reservedUsernames  String  @default("admin,administrator,support,moderator,root,sys")
+  rules              String? // System rules/TOS
+  firebaseConfig     String? // JSON string containing Firebase keys
+}
+
+model Captcha {
+  id        String   @id @default(uuid())
+  answer    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  adminId   String?  // ID of the admin who performed the action (if applicable)
+  action    String   // e.g., "LOGIN_SUCCESS", "LOGIN_FAILED", "USER_BANNED", "ROLE_CHANGED"
+  targetId  String?  // ID of the user affected (if applicable)
+  details   String?  // JSON string with more details
+  ip        String?
+  createdAt DateTime @default(now())
+
+  admin     User?    @relation("AdminAuditLogs", fields: [adminId], references: [id])
+
+  @@index([createdAt])
+  @@index([adminId, createdAt])
+}
+
+
+model UserDevice {
+  id                String   @id @default(uuid())
+  userId            String
+  deviceId          String
+  label             String?
+  identityKeyPublic String
+  signingPublicKey  String
+  signedPreKey      String
+  signedPreKeySig   String
+  ratchetPublicKey  String?
+  lastPreKeyRotationAt DateTime?
+  lastSeenAt        DateTime?
+  isPrimary         Boolean  @default(false)
+  isRevoked         Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  oneTimePreKeys OneTimePreKey[]
+  initiatedSessions E2EESession[] @relation("SessionInitiatorDevice")
+  recipientSessions E2EESession[] @relation("SessionRecipientDevice")
+  keyEvents      E2EEKeyEvent[]
+
+  @@unique([userId, deviceId])
+  @@index([userId, isRevoked, updatedAt])
+}
+
+model OneTimePreKey {
+  id          String   @id @default(uuid())
+  userId      String
+  deviceId    String
+  keyId       String
+  publicKey   String
+  signature   String?
+  status      String   @default("AVAILABLE") // AVAILABLE, RESERVED, CONSUMED, REVOKED
+  reservedAt  DateTime?
+  consumedAt  DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device UserDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, keyId])
+  @@index([userId, status, createdAt])
+  @@index([deviceId, status, createdAt])
+}
+
+model E2EESession {
+  id                   String   @id @default(uuid())
+  initiatorUserId      String
+  initiatorDeviceId    String
+  recipientUserId      String
+  recipientDeviceId    String
+  bootstrapPreKeyId    String?
+  rootKeyRef           String
+  sendingChainKeyRef   String?
+  receivingChainKeyRef String?
+  lastMessageNumber    Int      @default(0)
+  lastRemoteMessageNumber Int   @default(0)
+  status               String   @default("ACTIVE") // ACTIVE, REKEYING, CLOSED
+  establishedAt        DateTime @default(now())
+  lastUsedAt           DateTime @default(now())
+  closedAt             DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  initiatorDevice UserDevice @relation("SessionInitiatorDevice", fields: [initiatorDeviceId], references: [id], onDelete: Cascade)
+  recipientDevice UserDevice @relation("SessionRecipientDevice", fields: [recipientDeviceId], references: [id], onDelete: Cascade)
+
+  @@unique([initiatorDeviceId, recipientDeviceId])
+  @@index([initiatorUserId, recipientUserId, status])
+  @@index([recipientDeviceId, status, updatedAt])
+}
+
+model E2EEKeyEvent {
+  id         String   @id @default(uuid())
+  userId     String
+  deviceId   String
+  eventType  String   // DEVICE_REGISTERED, PREKEYS_UPLOADED, PREKEY_ROTATED, DEVICE_REVOKED, SESSION_BOOTSTRAPPED
+  keyRef     String?
+  details    String?
+  createdAt  DateTime @default(now())
+
+  user   User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device UserDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([deviceId, createdAt])
+}

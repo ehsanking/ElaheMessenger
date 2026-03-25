@@ -1,0 +1,32 @@
+#!/bin/sh
+set -eu
+
+fail() {
+  echo "[entrypoint] ERROR: $1" >&2
+  exit 1
+}
+
+export APP_ENV="${APP_ENV:-production}"
+export NODE_ENV="${NODE_ENV:-production}"
+
+node -e "require('./lib/env-security').validateProductionEnvironment()" || fail "Production environment validation failed."
+
+PRISMA_BIN=""
+if [ -x ./node_modules/.bin/prisma ]; then
+  PRISMA_BIN="./node_modules/.bin/prisma"
+elif [ -f ./node_modules/prisma/build/index.js ]; then
+  PRISMA_BIN="node ./node_modules/prisma/build/index.js"
+fi
+
+[ -z "$PRISMA_BIN" ] && fail "Prisma CLI not found."
+
+$PRISMA_BIN migrate deploy --schema=./prisma/schema.prisma || fail "Prisma migrations failed."
+
+if [ -f server.ts ]; then
+  if [ -x node_modules/.bin/tsx ]; then
+    exec node_modules/.bin/tsx server.ts
+  fi
+  exec npx tsx server.ts
+fi
+
+fail "No server entry point found."

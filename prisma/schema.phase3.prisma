@@ -1,0 +1,189 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  numericId    String   @unique
+  username     String   @unique
+  passwordHash String
+  displayName  String?
+  bio          String?
+  profilePhoto String?
+  role         String   @default("USER")
+  badge        String?
+  isVerified   Boolean  @default(false)
+  isBanned     Boolean  @default(false)
+  needsPasswordChange Boolean @default(false)
+  failedLoginAttempts Int @default(0)
+  lockoutUntil DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  identityKeyPublic String
+  signingPublicKey  String?
+  signedPreKey      String
+  signedPreKeySig   String
+  e2eeVersion       String   @default("legacy")
+  totpSecret    String?
+  totpEnabled   Boolean   @default(false)
+  sentMessages     Message[]      @relation("SentMessages")
+  receivedMessages Message[]      @relation("ReceivedMessages")
+  groupMemberships GroupMember[]
+  reportsMade      Report[]       @relation("Reporter")
+  reportsGot       Report[]       @relation("Reported")
+  pushSubscriptions PushSubscription[]
+  auditLogsPerformed AuditLog[] @relation("AdminAuditLogs")
+  contactsOwned    Contact[]      @relation("ContactOwner")
+  contactsOf       Contact[]      @relation("ContactTarget")
+  @@index([createdAt])
+  @@index([isBanned])
+  @@index([e2eeVersion])
+}
+
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+
+model Message {
+  id          String   @id @default(uuid())
+  senderId    String
+  recipientId String?
+  groupId     String?
+  type        Int
+  ciphertext  String
+  nonce       String
+  fileUrl     String?
+  fileName    String?
+  fileSize    Int?
+  wrappedFileKey      String?
+  wrappedFileKeyNonce String?
+  fileNonce           String?
+  createdAt   DateTime @default(now())
+  isDeleted   Boolean  @default(false)
+  sender    User   @relation("SentMessages", fields: [senderId], references: [id])
+  recipient User?  @relation("ReceivedMessages", fields: [recipientId], references: [id])
+  group     Group? @relation(fields: [groupId], references: [id])
+  @@index([recipientId, createdAt])
+  @@index([senderId, createdAt])
+  @@index([groupId, createdAt])
+}
+
+model Contact {
+  id        String   @id @default(uuid())
+  ownerId   String
+  contactId String
+  nickname  String?
+  createdAt DateTime @default(now())
+  owner   User @relation("ContactOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  contact User @relation("ContactTarget", fields: [contactId], references: [id], onDelete: Cascade)
+  @@unique([ownerId, contactId])
+  @@index([ownerId])
+}
+
+model Group {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  avatar      String?
+  type        String   @default("GROUP")
+  isPublic    Boolean  @default(false)
+  inviteLink  String?  @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  members  GroupMember[]
+  messages Message[]
+  @@index([type])
+  @@index([inviteLink])
+}
+
+model GroupMember {
+  id        String   @id @default(uuid())
+  groupId   String
+  userId    String
+  role      String   @default("MEMBER")
+  isMuted   Boolean  @default(false)
+  joinedAt  DateTime @default(now())
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([groupId, userId])
+  @@index([userId])
+}
+
+model Report {
+  id             String   @id @default(uuid())
+  reporterId     String
+  reportedUserId String
+  reason         String
+  status         String   @default("PENDING")
+  createdAt      DateTime @default(now())
+  reporter     User @relation("Reporter", fields: [reporterId], references: [id])
+  reportedUser User @relation("Reported", fields: [reportedUserId], references: [id])
+  @@index([status, createdAt])
+  @@index([reportedUserId])
+  @@index([reporterId])
+}
+
+model IpBan {
+  id        String   @id @default(uuid())
+  ip        String   @unique
+  reason    String?
+  createdAt DateTime @default(now())
+}
+
+model LoginAttempt {
+  id        String   @id @default(uuid())
+  ip        String
+  username  String?
+  success   Boolean
+  createdAt DateTime @default(now())
+  @@index([ip, createdAt])
+  @@index([username, createdAt])
+}
+
+model AdminSettings {
+  id                 String  @id @default("1")
+  isSetupCompleted   Boolean @default(false)
+  isRegistrationEnabled Boolean @default(true)
+  maxRegistrations   Int?
+  isCaptchaEnabled    Boolean @default(true)
+  maxAttachmentSize  Int     @default(10485760)
+  allowedFileFormats String  @default("*")
+  reservedUsernames  String  @default("admin,administrator,support,moderator,root,sys")
+  rules              String?
+  firebaseConfig     String?
+}
+
+model Captcha {
+  id        String   @id @default(uuid())
+  answer    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  @@index([expiresAt])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  adminId   String?
+  action    String
+  targetId  String?
+  details   String?
+  ip        String?
+  createdAt DateTime @default(now())
+  admin     User?    @relation("AdminAuditLogs", fields: [adminId], references: [id])
+  @@index([createdAt])
+  @@index([adminId, createdAt])
+}
