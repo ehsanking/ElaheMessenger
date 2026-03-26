@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { getSessionFromCookieHeader } from '@/lib/session';
 import { applySecurityHeaders } from '@/lib/security-headers';
-import { createRequestId } from '@/lib/observability';
+import { getSessionFromCookieHeaderEdge } from '@/lib/session-edge';
 
 const AUTH_ROUTES = ['/auth/login', '/auth/register'];
 const SETUP_ADMIN_ROUTE = '/auth/setup-admin';
@@ -10,7 +9,7 @@ const LEGACY_CHAT_ROUTE = '/chat-v2';
 const ADMIN_ROUTE = '/admin';
 
 export async function middleware(request: NextRequest) {
-  const session = getSessionFromCookieHeader(request.headers.get('cookie'), {
+  const session = await getSessionFromCookieHeaderEdge(request.headers.get('cookie'), {
     userAgent: request.headers.get('user-agent'),
     ip: request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? request.headers.get('x-real-ip'),
   });
@@ -18,7 +17,7 @@ export async function middleware(request: NextRequest) {
 
   if (pathname === LEGACY_CHAT_ROUTE || pathname.startsWith(`${LEGACY_CHAT_ROUTE}/`)) {
     const response = NextResponse.redirect(new URL(CHAT_ROUTE, request.url), 308);
-    response.headers.set('x-request-id', request.headers.get('x-request-id') || createRequestId());
+    response.headers.set('x-request-id', request.headers.get('x-request-id') || crypto.randomUUID());
     response.headers.set('x-legacy-route-retired', 'chat-v2');
     applySecurityHeaders(response.headers);
     return response;
@@ -69,12 +68,33 @@ export async function middleware(request: NextRequest) {
   const method = request.method?.toUpperCase() || 'GET';
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
     try {
-      // runtime imports are used here to avoid pulling in heavy dependencies into the edge bundle
-      const { assertSameOrigin, validateCsrfToken } = await import('@/lib/request-security');
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      assertSameOrigin(request as unknown as Request);
+      const origin = request.headers.get('origin');
+      const host = request.headers.get('host');
+      if (!origin || !host) {
+        throw new Error('Missing origin or host header.');
+      }
+
+      const expectedOrigins = new Set<string>();
+      if (process.env.APP_URL) expectedOrigins.add(process.env.APP_URL);
+      if (process.env.ALLOWED_ORIGINS) {
+        for (const configuredOrigin of process.env.ALLOWED_ORIGINS.split(',').map((value) => value.trim()).filter(Boolean)) {
+          expectedOrigins.add(configuredOrigin);
+        }
+      }
+      if (expectedOrigins.size === 0) {
+        const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
+        expectedOrigins.add(`${protocol}://${host}`);
+      }
+
+      if (!expectedOrigins.has(origin)) {
+        throw new Error('Origin is not allowed.');
+      }
+
       if (session) {
-        validateCsrfToken(request as unknown as Request, session);
+        const csrfToken = request.headers.get('x-csrf-token');
+        if (!csrfToken || csrfToken !== session.csrfToken) {
+          throw new Error('Invalid CSRF token.');
+        }
       }
     } catch (error) {
       return new Response('Invalid CSRF token or origin', { status: 403 });
@@ -82,7 +102,7 @@ export async function middleware(request: NextRequest) {
   }
 
   const response = NextResponse.next();
-  response.headers.set('x-request-id', request.headers.get('x-request-id') || createRequestId());
+  response.headers.set('x-request-id', request.headers.get('x-request-id') || crypto.randomUUID());
   applySecurityHeaders(response.headers);
   return response;
 }
