@@ -268,6 +268,11 @@ is_docker_compose_available() {
     docker compose version &>/dev/null 2>&1
 }
 
+compose_service_exists() {
+    local service="$1"
+    docker compose config --services 2>/dev/null | grep -Fxq "$service"
+}
+
 install_docker() {
     log_info "Installing Docker via official script..."
     local S; S=$(get_sudo)
@@ -386,6 +391,7 @@ RATE_LIMIT_MAX_REQUESTS=100
 SOCKET_RATE_LIMIT_WINDOW_MS=10000
 SOCKET_RATE_LIMIT_MAX=30
 QUEUE_CONCURRENCY=5
+OBJECT_STORAGE_DRIVER=local
 EOF
 
     if command -v chmod >/dev/null 2>&1; then
