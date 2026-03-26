@@ -17,6 +17,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      - name: Validate no merge conflict markers in docs
+        run: |
+          if rg -n "<<<<<<<|=======|>>>>>>>" README.md README.*; then
+            echo "Merge conflict markers detected in README files."
+            exit 1
+          fi
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
