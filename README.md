@@ -140,6 +140,33 @@ npm run build
 npm run lint
 ```
 
+
+---
+
+## Disclaimer
+
+KiNGChat is provided **"as is"** without warranties of any kind.
+
+- You are solely responsible for secure deployment, backups, key management, and legal compliance in your jurisdiction.
+- The maintainers are not liable for data loss, misconfiguration, service interruption, or security incidents in self-hosted environments.
+- Always run security reviews and penetration tests before production use.
+
+---
+
+## Donate
+
+If KiNGChat helps your team, you can support continued development:
+
+- **Tether (USDT):** `TKPswLQqd2e73UTGJ5prxVXBVo7MTsWedU`
+- **TRON (TRX):** `TKPswLQqd2e73UTGJ5prxVXBVo7MTsWedU`
+
+Copy-ready format:
+
+```text
+USDT (Tether): TKPswLQqd2e73UTGJ5prxVXBVo7MTsWedU
+TRON (TRX):    TKPswLQqd2e73UTGJ5prxVXBVo7MTsWedU
+```
+
 ---
 
 ## License
