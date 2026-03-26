@@ -372,9 +372,6 @@ POSTGRES_PASSWORD=pass
 POSTGRES_DB=kingchat
 DATABASE_URL=postgresql://user:pass@db:5432/kingchat
 PRISMA_CONNECTION_LIMIT=10
-MINIO_ENDPOINT=minio:9000
-MINIO_ACCESS_KEY=admin
-MINIO_SECRET_KEY=supersecret
 APP_URL=${APP_BASE_URL}
 ALLOWED_ORIGINS=${ALLOWED_ORIGINS_VALUE}
 LOG_LEVEL=info
@@ -794,7 +791,7 @@ launch_services() {
 
     # Pull pre-built infrastructure images first (skip if already cached)
     log_info "Pre-pulling infrastructure images (skips if cached)..."
-    if docker compose pull db minio caddy >/dev/null 2>&1; then
+    if docker compose pull db caddy >/dev/null 2>&1; then
         log_success "Infrastructure images ready."
     else
         log_warn "Some images will be pulled during build — this is normal."
@@ -812,10 +809,10 @@ launch_services() {
         return 1
     fi
 
-    # IMPORTANT: Start only db and minio first (NOT caddy, which depends on healthy app)
-    log_info "Starting database and storage services..."
-    if ! docker compose up -d db minio; then
-        log_error "Failed to start database/storage services."
+    # IMPORTANT: Start only db first (NOT caddy, which depends on healthy app)
+    log_info "Starting database service..."
+    if ! docker compose up -d db; then
+        log_error "Failed to start database service."
         DEPLOY_SUCCESS=false
         cd ..
         return 1
@@ -879,7 +876,7 @@ launch_services() {
         sleep 5
 
         log_info "Recovery: starting fresh..."
-        docker compose up -d db minio
+        docker compose up -d db
         sleep 10
 
         if docker compose build --no-cache app && docker compose up -d app && wait_for_app_health; then
@@ -926,7 +923,7 @@ print_summary() {
 
         echo -e "${GOLD}║${NC}  ${CYAN}DNS:${NC}           ${DNS_CHOICE:-system default}"
         echo -e "${GOLD}║${NC}  ${CYAN}Database:${NC}      PostgreSQL (container: kingchat-db)"
-        echo -e "${GOLD}║${NC}  ${CYAN}Storage:${NC}       MinIO (container: kingchat-minio)"
+        echo -e "${GOLD}║${NC}  ${CYAN}Storage:${NC}       Local filesystem (default)"
         echo -e "${GOLD}║${NC}  ${CYAN}Admin User:${NC}    admin"
         echo -e "${GOLD}║${NC}  ${CYAN}Admin Password:${NC} ${ADMIN_PASSWORD_GENERATED:-generated-in-.env}"
         echo -e "${GOLD}║${NC}"
