@@ -135,6 +135,7 @@ cp .env.example .env.local
 
 # 3. Edit .env.local — at minimum set:
 #    DATABASE_URL, JWT_SECRET, ENCRYPTION_KEY, APP_URL
+#    (local dev policy: .env.local)
 
 # 4. Install dependencies (generates Prisma client automatically)
 npm install
@@ -151,13 +152,19 @@ npm run build
 npm start
 ```
 
-> **First run:** `npm install` automatically runs `scripts/db-setup.ts` which detects your database type and generates the correct Prisma client.
+> **First run:** `npm install` now only generates the Prisma client. Run DB setup explicitly with `npm run db:init:dev` (SQLite/dev) or `npm run db:migrate:prod` (PostgreSQL/prod).
 
 ---
 
 ## Configuration
 
-All configuration is done through environment variables. Copy `.env.example` to `.env.local` and set the values below.
+All configuration is done through environment variables.
+
+- Local development policy: use `.env.local`
+- Docker/Compose policy: use `.env` (or Docker secrets)
+
+Both files are supported by the runtime loader with clear precedence:
+`process.env` > policy file (`.env.local` for local dev, `.env` for docker-compose) > secondary file.
 
 ### Core
 
@@ -213,9 +220,11 @@ docker compose up -d
 ### Production (with auto-SSL via Caddy)
 
 ```bash
-# Set your domain and secrets in .env, then:
+# Set your domain and strong secrets in .env (or Docker secrets), then:
 docker compose -f compose.prod.yaml up -d --build
 ```
+
+> Security note: `docker-compose.yml` no longer provides secret/password fallbacks. Define production credentials explicitly via `.env` or Docker secrets before startup.
 
 Container names and services:
 
@@ -290,7 +299,8 @@ npm run build        # Production build
 npm run lint         # ESLint check
 npm run format       # Prettier auto-format
 npm test             # Run Vitest test suite
-npm run db:setup     # Detect DB type and run migrations
+npm run db:init:dev   # SQLite/dev bootstrap
+npm run db:migrate:prod # PostgreSQL/prod migrations (fail-fast)
 npm run backup       # Create database backup archive
 ```
 

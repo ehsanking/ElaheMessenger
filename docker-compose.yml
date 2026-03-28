@@ -8,7 +8,7 @@ services:
     restart: unless-stopped
     environment:
       # Database — PostgreSQL via docker network
-      - DATABASE_URL=${DATABASE_URL:-postgresql://${POSTGRES_USER:-elahe_u7f3d9a1}:${POSTGRES_PASSWORD:-R9m4K2p8V6x1Q3t7N5w0B4c2H8y6L1z9}@db:5432/${POSTGRES_DB:-elahe}}
+      - DATABASE_URL=${DATABASE_URL:?DATABASE_URL is required}
       - PRISMA_CONNECTION_LIMIT=${PRISMA_CONNECTION_LIMIT:-10}
       # Storage
       # File storage now defaults to the local filesystem.  To enable an
@@ -25,10 +25,10 @@ services:
       - PORT=3000
       - HOSTNAME=0.0.0.0
       # Security — defaults provided so server starts even without .env
-      - JWT_SECRET=${JWT_SECRET:-changeme_jwt_secret_min32chars_xxx}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-changeme_encryption_key_32chars!}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
       - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
       # VAPID (optional — push notifications disabled if not set)
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
@@ -83,13 +83,13 @@ services:
     container_name: elahe-db
     restart: unless-stopped
     environment:
-      - POSTGRES_USER=${POSTGRES_USER:-elahe_u7f3d9a1}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-R9m4K2p8V6x1Q3t7N5w0B4c2H8y6L1z9}
-      - POSTGRES_DB=${POSTGRES_DB:-elahe}
+      - POSTGRES_USER=${POSTGRES_USER:?POSTGRES_USER is required}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - POSTGRES_DB=${POSTGRES_DB:?POSTGRES_DB is required}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-elahe_u7f3d9a1} -d ${POSTGRES_DB:-elahe}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10

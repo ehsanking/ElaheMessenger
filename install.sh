@@ -403,7 +403,7 @@ EOF
     fi
     ADMIN_PASSWORD_GENERATED="$ADMIN_PASSWORD_VALUE"
     RESOLVED_APP_URL="$APP_BASE_URL"
-    log_success "Secure runtime .env generated."
+    log_success "Secure runtime .env generated (Docker/Compose env policy)."
 }
 
 check_all_dependencies() {

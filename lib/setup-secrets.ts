@@ -2,25 +2,23 @@
  * Automatic secrets generator — runs on first startup.
  *
  * Checks for required env vars. Any that are missing are generated
- * automatically, written to .env.local (ignored by git), and printed
+ * automatically, written to the active env file (.env.local for local dev, .env for docker/production), and printed
  * to the terminal so the operator can note them down.
  *
  * On every subsequent restart the values are already present in
- * .env.local and this function is effectively a no-op.
+ * that env file and this function is effectively a no-op.
  *
  * IMPORTANT: ADMIN_PASSWORD is only generated on the very first run.
  * Once the admin changes their password via the admin panel, the
- * original generated password in .env.local is kept for reference
+ * original generated password in the active env file is kept for reference
  * but is no longer used — the hashed password in the database is
  * the authoritative source. Re-running setupSecrets (e.g. after an
- * update) will NOT overwrite an existing ADMIN_PASSWORD in .env.local.
+ * update) will NOT overwrite an existing ADMIN_PASSWORD in that env file.
  */
 
 import crypto from 'crypto';
 import fs from 'fs';
-import path from 'path';
-
-const ENV_LOCAL_PATH = path.join(process.cwd(), '.env.local');
+import { EnvPolicy, loadEnvWithPolicy } from './env-loader';
 
 const REQUIRED_SECRETS: Record<string, () => string> = {
   JWT_SECRET: () => crypto.randomBytes(48).toString('hex'),
@@ -48,61 +46,53 @@ function generateVapidKeys(): { publicKey: string; privateKey: string } {
   }
 }
 
-function readEnvLocal(): Record<string, string> {
-  if (!fs.existsSync(ENV_LOCAL_PATH)) return {};
-  const lines = fs.readFileSync(ENV_LOCAL_PATH, 'utf8').split('\n');
-  const result: Record<string, string> = {};
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eqIdx = trimmed.indexOf('=');
-    if (eqIdx === -1) continue;
-    const key = trimmed.slice(0, eqIdx).trim();
-    const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
-    result[key] = val;
-  }
-  return result;
-}
-
-function appendToEnvLocal(entries: Record<string, string>) {
+function appendToEnvFile(envPath: string, entries: Record<string, string>) {
   const lines = Object.entries(entries).map(([k, v]) => `${k}="${v}"`).join('\n');
-  const header = fs.existsSync(ENV_LOCAL_PATH) ? '\n' : '# Auto-generated secrets — do NOT commit this file\n';
-  fs.appendFileSync(ENV_LOCAL_PATH, header + lines + '\n', 'utf8');
+  const header = fs.existsSync(envPath) ? '\n' : '# Auto-generated secrets — do NOT commit this file\n';
+  fs.appendFileSync(envPath, header + lines + '\n', 'utf8');
 }
 
-function printSecretsBox(generated: Record<string, string>, adminUser: string) {
+function printSecretsBox(generated: Record<string, string>, adminUser: string, envFileLabel: string) {
   const line = '='.repeat(60);
   const keys = Object.keys(generated).sort().join(', ');
   console.log(`\n${line}`);
   console.log('Elahe Messenger — Security keys generated');
   console.log(line);
   console.log(`Admin username: ${adminUser}`);
-  console.log(`Generated keys stored in .env.local: ${keys}`);
+  console.log(`Generated keys stored in ${envFileLabel}: ${keys}`);
   console.log('Secret values are intentionally not echoed to stdout.');
   console.log('Rotate the initial admin password after first login.');
   console.log(`${line}\n`);
 }
 
-function printExistingPasswordReminder(adminUser: string) {
+function printExistingPasswordReminder(adminUser: string, envFileLabel: string) {
   const line = '='.repeat(60);
   console.log(`\n${line}`);
   console.log('Elahe Messenger — Admin credentials reminder');
   console.log(line);
   console.log(`Admin username: ${adminUser}`);
   console.log('Admin password value is intentionally not printed.');
-  console.log('Use the current credential already stored in your secret manager or .env.local.');
+  console.log(`Use the current credential already stored in your secret manager or ${envFileLabel}.`);
   console.log(`${line}\n`);
 }
 
+
+function resolveEnvPolicy(): EnvPolicy {
+  const appEnv = process.env.APP_ENV || process.env.NODE_ENV || 'development';
+  return appEnv === 'production' ? 'docker-compose' : 'local-dev';
+}
+
 export function setupSecrets(): void {
-  const existing = readEnvLocal();
+  const envState = loadEnvWithPolicy(process.cwd(), resolveEnvPolicy());
+  const existing = envState.values;
+  const envFileLabel = envState.primaryPath.endsWith('.env') ? '.env' : '.env.local';
   const generated: Record<string, string> = {};
 
   // Check simple scalar secrets
   for (const [key, generator] of Object.entries(REQUIRED_SECRETS)) {
-    // If already in process.env (from .env or docker-compose) or .env.local, skip
+    // If already in process.env (from shell/env-file loading), skip
     if (process.env[key] || existing[key]) {
-      // Make sure env is set from .env.local if not already present
+      // Make sure env is set from loaded env files if not already present
       if (!process.env[key] && existing[key]) {
         process.env[key] = existing[key];
       }
@@ -138,7 +128,7 @@ export function setupSecrets(): void {
     process.env.DATABASE_URL = sqliteFallback;
   }
 
-  // Apply any values from .env.local that aren't already in the environment
+  // Apply any loaded env-file values that are not already in the environment
   for (const [key, value] of Object.entries(existing)) {
     if (!process.env[key]) {
       process.env[key] = value;
@@ -146,15 +136,15 @@ export function setupSecrets(): void {
   }
 
   if (Object.keys(generated).length > 0) {
-    appendToEnvLocal(generated);
+    appendToEnvFile(envState.primaryPath, generated);
     const adminUser = process.env.ADMIN_USERNAME || 'admin';
-    printSecretsBox(generated, adminUser);
+    printSecretsBox(generated, adminUser, envFileLabel);
   } else {
     // No new secrets generated — show existing admin password as reminder
     const adminPassword = existing.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD;
     if (adminPassword) {
       const adminUser = process.env.ADMIN_USERNAME || 'admin';
-      printExistingPasswordReminder(adminUser);
+      printExistingPasswordReminder(adminUser, envFileLabel);
     }
   }
 }
