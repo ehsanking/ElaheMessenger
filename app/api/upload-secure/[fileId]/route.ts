@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readFile } from 'fs/promises';
-import path from 'path';
 import { getSessionFromRequest } from '@/lib/session';
 import { appendAuditLog } from '@/lib/audit';
 import { authorizeConversationAccess } from '@/lib/conversation-access';
-import { findSecureAttachmentPath, verifySecureDownloadToken } from '@/lib/secure-attachments';
+import { resolveSecureAttachmentPath, verifySecureDownloadToken } from '@/lib/secure-attachments';
 import { incrementMetric } from '@/lib/observability';
 
 export async function GET(req: NextRequest, context: { params: Promise<{ fileId: string }> }) {
@@ -15,13 +14,13 @@ export async function GET(req: NextRequest, context: { params: Promise<{ fileId:
 
   const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? req.headers.get('x-real-ip');
   const { fileId } = await context.params;
-  const token = req.nextUrl.searchParams.get('token') || '';
-  const filePath = await findSecureAttachmentPath(fileId);
-  if (!filePath) {
+  const resolved = await resolveSecureAttachmentPath(fileId);
+  if (!resolved) {
     return NextResponse.json({ error: 'Encrypted file not found.' }, { status: 404 });
   }
 
-  const conversationId = path.basename(path.dirname(filePath));
+  const conversationId = resolved.conversationId;
+  const token = req.headers.get('x-download-token')?.trim() || req.nextUrl.searchParams.get('token') || '';
   if (!fileId || !token || !verifySecureDownloadToken(token, fileId, session.userId, conversationId)) {
     incrementMetric('secure_downloads_blocked', 1, { reason: 'invalid_token' });
     return NextResponse.json({ error: 'Invalid or expired download token.' }, { status: 403 });
@@ -53,7 +52,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ fileId:
   });
   incrementMetric('secure_downloads_granted', 1, { kind: access.kind });
 
-  const fileBuffer = await readFile(filePath);
+  const fileBuffer = await readFile(resolved.filePath);
   return new NextResponse(fileBuffer, {
     status: 200,
     headers: {

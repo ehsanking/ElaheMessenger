@@ -69,11 +69,7 @@ export async function POST(request: Request) {
 
     issueSession(response, {
       userId: result.userId!,
-      username: result.username!,
-      numericId: result.numericId!,
       role: result.role!,
-      badge: result.badge ?? null,
-      isVerified: Boolean(result.isVerified),
       needsPasswordChange: Boolean(result.needsPasswordChange),
     }, {
       userAgent: request.headers.get('user-agent'),

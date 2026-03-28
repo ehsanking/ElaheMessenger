@@ -14,11 +14,7 @@ describe('session hardening', () => {
     const token = createSessionToken(
       {
         userId: 'u1',
-        username: 'alice',
-        numericId: '1001',
         role: 'USER',
-        badge: null,
-        isVerified: true,
         needsPasswordChange: false,
       },
       { userAgent: 'agent-a' },

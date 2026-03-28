@@ -21,13 +21,14 @@ export default function AdminSettingsPage() {
       const result = await getAdminSettings();
       const { settings } = result;
       if (settings) {
+        const dynamicSettings = settings as Record<string, unknown>;
         setMaxSize(settings.maxAttachmentSize / (1024 * 1024));
         setFormats(settings.allowedFileFormats);
         setFirebaseConfig(settings.firebaseConfig || '');
         setIsFirebaseEnabled(!!settings.firebaseConfig && settings.firebaseConfig.length > 10);
         setIsCaptchaEnabled(Boolean(settings.isCaptchaEnabled));
-        setRecaptchaSiteKey(settings.recaptchaSiteKey || '');
-        setRecaptchaSecretKey(settings.recaptchaSecretKey || '');
+        setRecaptchaSiteKey(typeof dynamicSettings.recaptchaSiteKey === 'string' ? dynamicSettings.recaptchaSiteKey : '');
+        setRecaptchaSecretKey(typeof dynamicSettings.recaptchaSecretKey === 'string' ? dynamicSettings.recaptchaSecretKey : '');
       }
       setIsLoading(false);
     }

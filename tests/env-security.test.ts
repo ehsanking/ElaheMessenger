@@ -19,21 +19,16 @@ const validBase = {
 
 describe('validateProductionEnvironment', () => {
   it('rejects placeholder admin username and placeholder database url', () => {
-    process.env = {
-      ...process.env,
-      ...validBase,
+    Object.assign(process.env, validBase, {
       ADMIN_USERNAME: '__SET_ME_ADMIN_USERNAME__',
       DATABASE_URL: 'postgresql://__SET_ME_POSTGRES_USER__:__SET_ME_POSTGRES_PASSWORD__@db:5432/elahe',
-    };
+    });
 
     expect(() => validateProductionEnvironment()).toThrowError();
   });
 
   it('passes when all production values are non-placeholder and strong', () => {
-    process.env = {
-      ...process.env,
-      ...validBase,
-    };
+    Object.assign(process.env, validBase);
 
     expect(() => validateProductionEnvironment()).not.toThrow();
   });

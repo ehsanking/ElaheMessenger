@@ -1,22 +1,23 @@
 import crypto from 'crypto';
 import path from 'path';
-import { readdir } from 'fs/promises';
 import { scanBufferForMalware } from '@/lib/antivirus';
 import { appendAuditLog } from '@/lib/audit';
 import { authorizeConversationAccess } from '@/lib/conversation-access';
 import { incrementMetric } from '@/lib/observability';
-import { putPrivateObject, getPrivateObject, getPrivateObjectPath } from '@/lib/object-storage';
+import { getPrivateObject, getPrivateObjectPath, putPrivateObject } from '@/lib/object-storage';
 
 const getSigningSecret = () => {
-  const secret = process.env.ENCRYPTION_KEY || process.env.JWT_SECRET;
+  const secret = process.env.DOWNLOAD_TOKEN_SECRET || process.env.ENCRYPTION_KEY || process.env.JWT_SECRET;
   if (!secret) {
-    throw new Error('Missing ENCRYPTION_KEY or JWT_SECRET for secure upload signing.');
+    throw new Error('Missing DOWNLOAD_TOKEN_SECRET, ENCRYPTION_KEY, or JWT_SECRET for secure upload signing.');
   }
   return secret;
 };
 
 export const buildSecureAttachmentKey = (conversationId: string, fileId: string) =>
   path.posix.join('attachments', conversationId, `${fileId}.bin`);
+
+const buildSecureAttachmentMetadataKey = (fileId: string) => path.posix.join('attachment-index', `${fileId}.json`);
 
 export const verifyAttachmentWriteAccess = async (conversationId: string, userId: string) => {
   const access = await authorizeConversationAccess(conversationId, userId);
@@ -48,6 +49,27 @@ export const verifySecureDownloadToken = (token: string, fileId: string, userId:
   }
 };
 
+const persistAttachmentMetadata = async (data: { fileId: string; conversationId: string; ownerUserId: string; objectKey: string }) => {
+  const metadata = Buffer.from(JSON.stringify(data), 'utf8');
+  await putPrivateObject(buildSecureAttachmentMetadataKey(data.fileId), metadata);
+};
+
+export const getAttachmentMetadata = async (fileId: string): Promise<{ fileId: string; conversationId: string; ownerUserId: string; objectKey: string } | null> => {
+  try {
+    const raw = await getPrivateObject(buildSecureAttachmentMetadataKey(fileId));
+    const parsed = JSON.parse(raw.toString('utf8')) as { fileId?: string; conversationId?: string; ownerUserId?: string; objectKey?: string };
+    if (!parsed.fileId || !parsed.conversationId || !parsed.objectKey || parsed.fileId !== fileId) return null;
+    return {
+      fileId: parsed.fileId,
+      conversationId: parsed.conversationId,
+      ownerUserId: parsed.ownerUserId ?? '',
+      objectKey: parsed.objectKey,
+    };
+  } catch {
+    return null;
+  }
+};
+
 export const storeSecureAttachment = async (params: {
   conversationId: string;
   userId: string;
@@ -70,31 +92,31 @@ export const storeSecureAttachment = async (params: {
   }
 
   const fileId = crypto.randomUUID();
-  const storage = await putPrivateObject(buildSecureAttachmentKey(params.conversationId, fileId), buffer);
+  const objectKey = buildSecureAttachmentKey(params.conversationId, fileId);
+  const storage = await putPrivateObject(objectKey, buffer);
+  await persistAttachmentMetadata({ fileId, conversationId: params.conversationId, ownerUserId: params.userId, objectKey });
+
   const expiresAt = Date.now() + 60 * 60 * 1000;
   const token = createSecureDownloadToken(fileId, expiresAt, params.userId, params.conversationId);
   incrementMetric('secure_uploads_created', 1, { kind: access.kind });
   await appendAuditLog({ action: 'SECURE_UPLOAD_CREATED', actorUserId: params.userId, targetId: fileId, conversationId: params.conversationId, ip: params.ip, outcome: 'success', details: { fileName: params.file.name, fileSize: params.file.size, sha256: scan.sha256, detectedMime: scan.detectedMime, conversationKind: access.kind, storageUrl: storage.storageUrl, ...params.metadata } });
 
-  return { ok: true as const, fileId, token, access, storagePath: storage.storageUrl, downloadUrl: `/api/upload-secure/${fileId}?token=${token}` };
+  return {
+    ok: true as const,
+    fileId,
+    token,
+    access,
+    storagePath: storage.storageUrl,
+    downloadUrl: `/api/upload-secure/${fileId}?token=${token}`,
+    headerDownloadUrl: `/api/upload-secure/${fileId}`,
+  };
 };
 
 export const readSecureAttachment = async (conversationId: string, fileId: string) =>
   getPrivateObject(buildSecureAttachmentKey(conversationId, fileId));
 
-export const findSecureAttachmentPath = async (fileId: string) => {
-  const attachmentsRoot = path.join(process.cwd(), process.env.OBJECT_STORAGE_ROOT || 'object_storage', process.env.OBJECT_STORAGE_PRIVATE_BUCKET || 'private', 'attachments');
-  const conversationDirs = await readdir(attachmentsRoot, { withFileTypes: true }).catch(() => []);
-  for (const entry of conversationDirs) {
-    if (!entry.isDirectory()) continue;
-    const key = buildSecureAttachmentKey(entry.name, fileId);
-    const candidate = getPrivateObjectPath(key);
-    try {
-      await import('fs/promises').then((m) => m.access(candidate));
-      return candidate;
-    } catch {
-      continue;
-    }
-  }
-  return null;
+export const resolveSecureAttachmentPath = async (fileId: string) => {
+  const metadata = await getAttachmentMetadata(fileId);
+  if (!metadata) return null;
+  return { ...metadata, filePath: getPrivateObjectPath(metadata.objectKey) };
 };

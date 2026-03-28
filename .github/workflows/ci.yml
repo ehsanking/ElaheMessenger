@@ -7,7 +7,6 @@ on:
     branches: [ main, master ]
 
 env:
-  # Opt in early to the upcoming GitHub Actions Node.js 24 JavaScript runtime.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -23,6 +22,7 @@ jobs:
             echo "Merge conflict markers detected in README files."
             exit 1
           fi
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -30,13 +30,22 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+        run: npm ci --no-fund
 
       - name: Generate Prisma client
         run: npx prisma generate
 
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
       - name: Run tests
         run: npm run test
+
+      - name: Dependency audit (high+)
+        run: npm run security:audit
 
       - name: Build
         run: npm run build
