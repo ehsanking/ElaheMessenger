@@ -96,7 +96,7 @@ export async function middleware(request: NextRequest) {
           throw new Error('Invalid CSRF token.');
         }
       }
-    } catch (error) {
+    } catch {
       return new Response('Invalid CSRF token or origin', { status: 403 });
     }
   }
