@@ -213,9 +213,11 @@ docker compose up -d
 ### Production (with auto-SSL via Caddy)
 
 ```bash
-# Set your domain and secrets in .env, then:
+# Set your domain and strong secrets in .env (or Docker secrets), then:
 docker compose -f compose.prod.yaml up -d --build
 ```
+
+> Security note: `docker-compose.yml` no longer provides secret/password fallbacks. Define production credentials explicitly via `.env` or Docker secrets before startup.
 
 Container names and services:
 
