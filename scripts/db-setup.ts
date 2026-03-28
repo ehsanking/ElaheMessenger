@@ -20,11 +20,13 @@ const ROOT = path.join(__dirname, '..');
 type SetupMode = 'init-dev' | 'migrate-prod';
 
 function resolvePolicy(mode: SetupMode): EnvPolicy {
+  // Merge-resolved source of truth: policy-based loader (no legacy readEnvLocal path).
   return mode === 'migrate-prod' ? 'docker-compose' : 'local-dev';
 }
 
 function getEffectiveDatabaseUrl(mode: SetupMode): string {
-  const envState = loadEnvWithPolicy(ROOT, resolvePolicy(mode));
+  const policy = resolvePolicy(mode);
+  const envState = loadEnvWithPolicy(ROOT, policy);
   if (envState.values.DATABASE_URL) return envState.values.DATABASE_URL;
 
   if (mode === 'init-dev') {
