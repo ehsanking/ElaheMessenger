@@ -63,6 +63,8 @@ export async function POST(req: NextRequest) {
       success: true,
       storagePath: stored.storagePath,
       downloadUrl: stored.downloadUrl,
+      downloadToken: stored.token,
+      headerDownloadUrl: stored.headerDownloadUrl,
       fileName: file.name,
       fileSize: file.size,
       metadata: { wrappedFileKey, wrappedFileKeyNonce, fileNonce },

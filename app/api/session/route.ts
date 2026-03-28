@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { clearSession, getSessionFromRequest } from '@/lib/session';
 import { assertSameOrigin, validateCsrfToken } from '@/lib/request-security';
-
+import { prisma } from '@/lib/prisma';
 
 export async function GET(request: Request) {
   const session = getSessionFromRequest(request);
@@ -9,17 +9,26 @@ export async function GET(request: Request) {
     return NextResponse.json({ authenticated: false }, { status: 401 });
   }
 
+  const user = await prisma.user.findUnique({
+    where: { id: session.userId },
+    select: {
+      id: true,
+      username: true,
+      numericId: true,
+      role: true,
+      badge: true,
+      isVerified: true,
+      needsPasswordChange: true,
+    },
+  });
+
+  if (!user) {
+    return NextResponse.json({ authenticated: false }, { status: 401 });
+  }
+
   return NextResponse.json({
     authenticated: true,
-    user: {
-      id: session.userId,
-      username: session.username,
-      numericId: session.numericId,
-      role: session.role,
-      badge: session.badge,
-      isVerified: session.isVerified,
-      needsPasswordChange: session.needsPasswordChange,
-    },
+    user,
     csrfToken: session.csrfToken,
   });
 }

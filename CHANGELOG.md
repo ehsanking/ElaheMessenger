@@ -7,6 +7,11 @@
 - Hardened installer network behavior by removing global git SSL verification disable and insecure `curl -k` usage.
 - Made DNS and Docker daemon mutation in `install.sh` opt-in and declared installer Linux-only.
 - Removed seeded placeholder E2EE key material for bootstrap admin; account now starts with empty keys and must register client keys after login.
+- Tightened same-origin enforcement to reject missing `Origin`/`Host` on protected mutation routes.
+- Minimized session-cookie claims to essential auth/session fields only; user profile metadata is now loaded server-side from the database.
+- Hardened secure attachment downloads with indexed metadata lookup (`fileId -> object key`), header-based token support (`x-download-token`), and retained query-token fallback for compatibility.
+- Encrypted TOTP secrets at rest with AES-256-GCM and added lazy migration for legacy plaintext secrets.
+- Strengthened CI with lint, typecheck, and dependency audit gates; added project `LICENSE` and package license metadata.
 
 ### Stability and operations
 - Added shared environment loader policy (`.env` for production, `.env` + `.env.local` for development) and reused it in runtime/scripts.
