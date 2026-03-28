@@ -4,6 +4,13 @@
 
 set -eu
 
+on_err() {
+  line="$1"
+  echo "[entrypoint] ERROR: bootstrap failed near line ${line}. Check previous logs for root cause." >&2
+}
+
+trap 'on_err $LINENO' ERR
+
 log() {
   echo "[entrypoint] $1"
 }
@@ -117,8 +124,10 @@ fi
 log "Running Prisma database migrations (migrate deploy)..."
 if ! run_prisma migrate deploy --schema=./prisma/schema.prisma 2>&1; then
   warn "prisma migrate deploy failed. Refusing schema sync fallback in production."
+  warn "Verify DATABASE_URL connectivity, migration history consistency, and Prisma schema compatibility."
   exit 1
 fi
+log "Prisma migrations applied successfully."
 
 # ── Locate and start the server ───────────────
 # IMPORTANT: We prefer the custom server.ts (via tsx) over the standalone

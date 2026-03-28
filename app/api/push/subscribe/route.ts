@@ -3,11 +3,13 @@ import { prisma } from '@/lib/prisma';
 import { getRateLimitHeaders, rateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
 import { getSessionFromRequest } from '@/lib/session';
+import { getRequestIdForRequest, respondWithInternalError, respondWithSafeError } from '@/lib/http-errors';
 
 const getClientIp = (request: Request) =>
   request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
 
 export async function POST(request: Request) {
+  const requestId = getRequestIdForRequest(request);
   const ip = getClientIp(request);
   let rateHeaders: HeadersInit | undefined;
 
@@ -20,7 +22,12 @@ export async function POST(request: Request) {
     // request is unauthorized.
     const session = getSessionFromRequest(request);
     if (!session) {
-      return NextResponse.json({ error: 'Authentication required.' }, { status: 401 });
+      return respondWithSafeError({
+        status: 401,
+        message: 'Authentication required.',
+        code: 'AUTH_REQUIRED',
+        requestId,
+      });
     }
     const userId = session.userId;
 
@@ -31,7 +38,11 @@ export async function POST(request: Request) {
 
     if (!rateResult.allowed) {
       return NextResponse.json(
-        { error: 'Too many subscription requests. Please try again later.' },
+        {
+          error: 'Too many subscription requests. Please try again later.',
+          errorCode: 'RATE_LIMITED',
+          requestId,
+        },
         { status: 429, headers: rateHeaders },
       );
     }
@@ -43,7 +54,14 @@ export async function POST(request: Request) {
       typeof subscription.keys.p256dh !== 'string' ||
       typeof subscription.keys.auth !== 'string'
     ) {
-      return NextResponse.json({ error: 'Invalid subscription data' }, { status: 400, headers: rateHeaders });
+      return respondWithSafeError({
+        status: 400,
+        message: 'Invalid subscription data',
+        code: 'VALIDATION_ERROR',
+        action: 'Provide endpoint, keys.p256dh, and keys.auth.',
+        requestId,
+        headers: rateHeaders,
+      });
     }
 
     await prisma.pushSubscription.upsert({
@@ -63,7 +81,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true }, { headers: rateHeaders });
   } catch (error) {
-    logger.error('Push subscription error.', { error: error instanceof Error ? error.message : String(error) });
-    return NextResponse.json({ error: 'Failed to subscribe' }, { status: 500, headers: rateHeaders });
+    logger.error('Push subscription error.', {
+      requestId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return respondWithInternalError('Push subscription API', error, { requestId, headers: rateHeaders });
   }
 }

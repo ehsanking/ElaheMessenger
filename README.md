@@ -153,6 +153,17 @@ npm start
 
 > **First run:** `npm install` is side-effect free for database state (client generation only). Run DB setup explicitly with `npm run db:init:dev` (SQLite/dev) or `npm run db:migrate:prod` (PostgreSQL/prod).
 
+### Install/First-Run Diagnostics
+
+- Docker startup now logs explicit bootstrap stages (env validation, DB wait, migration deploy, server handoff) in `docker-entrypoint.sh`.
+- Migration failures are fail-fast and include actionable guidance (`DATABASE_URL` reachability, migration history, schema compatibility).
+- Runtime/API failures return structured safe error payloads with:
+  - `error` (safe message),
+  - `errorCode` (machine-readable classification),
+  - `requestId` (for correlation in server logs),
+  - optional `action` (next step for operators/clients).
+- For authentication/bootstrap failures, use the emitted `requestId` to correlate with JSON logs from `lib/logger.ts`.
+
 ---
 
 ## Configuration

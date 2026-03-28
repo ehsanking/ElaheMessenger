@@ -12,6 +12,10 @@ import { sendPushNotification } from './lib/push';
 
 loadApplicationEnvironment();
 validateProductionEnvironment();
+logger.info('Runtime environment loaded and validated.', {
+  nodeEnv: process.env.NODE_ENV ?? 'development',
+  appEnv: process.env.APP_ENV ?? null,
+});
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = '0.0.0.0';
@@ -69,7 +73,9 @@ registerBackgroundJob('push_notification', async (payload) => {
 });
 
 app.prepare().then(async () => {
+  logger.info('Preparing application server bootstrap.');
   await initializeAdmin();
+  logger.info('Admin bootstrap finished.');
 
   const server = createServer((req, res) => {
     const parsedUrl = parse(req.url!, true);
@@ -86,12 +92,20 @@ app.prepare().then(async () => {
   });
 
   await initializeRedisAdapter(io);
+  logger.info('Socket server initialized.', {
+    corsMode: corsOrigins === true ? 'allow-all' : 'allow-list',
+    rateLimitWindowMs: socketRateLimitWindowMs,
+    rateLimitMax: socketRateLimitMax,
+  });
+
   await startBackgroundJobWorker();
+  logger.info('Background job worker started.');
 
   setupSocket(io, {
     socketRateLimitWindowMs,
     socketRateLimitMax,
   });
+  logger.info('Socket handlers attached.');
 
   server.listen(port, hostname, () => {
     logger.info(`> Ready on http://${hostname}:${port}`);

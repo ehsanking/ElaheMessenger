@@ -2,11 +2,15 @@ import { NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/session';
 import { prisma } from '@/lib/prisma';
 import { verifySignedPreKey } from '@/lib/e2ee-signing';
+import { getRequestIdForRequest, respondWithInternalError, respondWithSafeError } from '@/lib/http-errors';
 
 export async function POST(request: Request) {
+  const requestId = getRequestIdForRequest(request);
   try {
     const session = getSessionFromRequest(request);
-    if (!session) return NextResponse.json({ error: 'Authentication required.' }, { status: 401 });
+    if (!session) {
+      return respondWithSafeError({ status: 401, message: 'Authentication required.', code: 'AUTH_REQUIRED', requestId });
+    }
 
     const body = await request.json();
     const deviceId = typeof body?.deviceId === 'string' ? body.deviceId.trim() : '';
@@ -20,11 +24,24 @@ export async function POST(request: Request) {
     const oneTimePreKeys = Array.isArray(body?.oneTimePreKeys) ? body.oneTimePreKeys : [];
 
     if (!deviceId || !identityKeyPublic || !signingPublicKey || !signedPreKey || !signedPreKeySig) {
-      return NextResponse.json({ error: 'Missing required device bundle fields.' }, { status: 400 });
+      return respondWithSafeError({
+        status: 400,
+        message: 'Missing required device bundle fields.',
+        code: 'VALIDATION_ERROR',
+        action: 'Provide deviceId, identityKeyPublic, signingPublicKey, signedPreKey, and signedPreKeySig.',
+        requestId,
+      });
     }
 
     const signatureValid = await verifySignedPreKey(signedPreKey, signedPreKeySig, signingPublicKey);
-    if (!signatureValid) return NextResponse.json({ error: 'Invalid signed pre-key signature.' }, { status: 400 });
+    if (!signatureValid) {
+      return respondWithSafeError({
+        status: 400,
+        message: 'Invalid signed pre-key signature.',
+        code: 'VALIDATION_ERROR',
+        requestId,
+      });
+    }
 
     const device = await prisma.$transaction(async (tx) => {
       if (isPrimary) {
@@ -92,6 +109,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, deviceId: device.deviceId });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to register device.' }, { status: 500 });
+    return respondWithInternalError('E2EE device registration', error, { requestId });
   }
 }
