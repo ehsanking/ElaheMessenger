@@ -31,6 +31,7 @@ import {
 import { verifySessionToken, SESSION_COOKIE_NAME } from '@/lib/session';
 import { verifyRecaptchaToken } from '@/lib/google-recaptcha';
 import { createRequestId } from '@/lib/observability';
+import { decryptSecret, encryptSecret, isEncryptedSecret } from '@/lib/secret-encryption';
 
 /**
  * Reads the session token from the request cookies and verifies it.  If the cookie is
@@ -1381,6 +1382,18 @@ export async function leaveGroup(userId: string, groupId: string) {
 }
 
 // ── 2FA TOTP ─────────────────────────────────────────────────
+
+const readTotpSecretWithMigration = async (userId: string, value: string) => {
+  const secret = decryptSecret(value);
+  if (!isEncryptedSecret(value)) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { totpSecret: encryptSecret(secret) },
+    });
+  }
+  return secret;
+};
+
 export async function setup2FA(userId: string) {
   const sanitizedUserId = asTrimmedString(userId);
   if (!sanitizedUserId) return { error: 'User id is required.' };
@@ -1399,7 +1412,7 @@ export async function setup2FA(userId: string) {
     // Store the secret (not yet enabled — user must verify first)
     await prisma.user.update({
       where: { id: sanitizedUserId },
-      data: { totpSecret: secret.base32 },
+      data: { totpSecret: encryptSecret(secret.base32) },
     });
 
     const totp = new TOTP({
@@ -1448,7 +1461,7 @@ export async function verify2FA(userId: string, token: string) {
       algorithm: 'SHA1',
       digits: 6,
       period: 30,
-      secret: Secret.fromBase32(user.totpSecret),
+      secret: Secret.fromBase32(await readTotpSecretWithMigration(user.id, user.totpSecret)),
     });
 
     const delta = totp.validate({ token: sanitizedToken, window: 1 });
@@ -1488,7 +1501,7 @@ export async function disable2FA(userId: string, token: string) {
       algorithm: 'SHA1',
       digits: 6,
       period: 30,
-      secret: Secret.fromBase32(user.totpSecret),
+      secret: Secret.fromBase32(await readTotpSecretWithMigration(user.id, user.totpSecret)),
     });
 
     const delta = totp.validate({ token: sanitizedToken, window: 1 });
@@ -1528,7 +1541,7 @@ export async function validate2FALogin(userId: string, token: string) {
       algorithm: 'SHA1',
       digits: 6,
       period: 30,
-      secret: Secret.fromBase32(user.totpSecret),
+      secret: Secret.fromBase32(await readTotpSecretWithMigration(user.id, user.totpSecret)),
     });
 
     const delta = totp.validate({ token: sanitizedToken, window: 1 });

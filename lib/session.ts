@@ -6,11 +6,7 @@ const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 
 export type SessionData = {
   userId: string;
-  username: string;
-  numericId: string;
   role: string;
-  badge: string | null;
-  isVerified: boolean;
   needsPasswordChange: boolean;
   csrfToken: string;
   issuedAt: number;
@@ -20,7 +16,7 @@ export type SessionData = {
   expiresAt: number;
 };
 
-type SessionUserLike = Omit<SessionData, 'csrfToken' | 'issuedAt' | 'sessionVersion' | 'expiresAt'>;
+export type SessionUserLike = Pick<SessionData, 'userId' | 'role' | 'needsPasswordChange'>;
 
 const getSessionSecret = () => {
   const secret = process.env.SESSION_SECRET || process.env.JWT_SECRET || process.env.ENCRYPTION_KEY;
@@ -52,7 +48,6 @@ const hashOptionalValue = (value: string | null | undefined) =>
 export const createSessionToken = (user: SessionUserLike, requestContext?: { userAgent?: string | null; ip?: string | null }) => {
   const session: SessionData = {
     ...user,
-    badge: user.badge ?? null,
     csrfToken: crypto.randomBytes(24).toString('hex'),
     issuedAt: Date.now(),
     sessionVersion: 2,
