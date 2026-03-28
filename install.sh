@@ -21,9 +21,11 @@ USE_DOMAIN=false
 DOMAIN_NAME=""
 SSL_EMAIL=""
 RESOLVED_APP_URL=""
+PROXY_CONFIG_ACTION="generate"
 ADMIN_CREATED_FILE=""
 ADMIN_AUTO_GENERATED=false
 ADMIN_FORCE_PASSWORD_CHANGE=false
+UPGRADE_BACKUP_DIR=""
 
 log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 log_success() { echo -e "${GREEN}[OK]${NC} $1"; }
@@ -32,6 +34,24 @@ log_error() { echo -e "${RED}[ERR]${NC} $1"; }
 log_step() { echo -e "\n${PURPLE}=== $1 ===${NC}"; }
 
 command_exists() { command -v "$1" >/dev/null 2>&1; }
+
+on_error() {
+  local exit_code=$?
+  if [ "$exit_code" -ne 0 ]; then
+    log_error "Installer failed (exit code: $exit_code)."
+    if [ -n "$UPGRADE_BACKUP_DIR" ]; then
+      log_warn "Backup available at: $UPGRADE_BACKUP_DIR"
+      log_warn "Rollback: stop compose, restore files from backup, then relaunch."
+    fi
+  fi
+}
+
+require_root() {
+  if [ "${EUID:-$(id -u)}" -ne 0 ]; then
+    log_error "Installer must run as root. Re-run with: sudo bash install.sh"
+    exit 1
+  fi
+}
 
 compose_service_exists() {
   local service="$1"
@@ -177,24 +197,26 @@ safe_download_file() {
 choose_install_mode() {
   log_step "Install mode detection"
 
-  local dir_exists=false env_exists=false compose_project=false db_volume=false
+  local dir_exists=false env_exists=false compose_project=false known_containers=false known_project_files=false
 
   [ -d "$TARGET_DIR" ] && dir_exists=true
   [ -f "$TARGET_DIR/.env" ] && env_exists=true
+  [ -f "$TARGET_DIR/docker-compose.yml" ] && known_project_files=true
 
-  if command_exists docker && docker ps -a --format '{{.Names}}' 2>/dev/null | grep -Eq '^elahe-(app|db|caddy)$'; then
+  local compose_project_name
+  compose_project_name="$(basename "$TARGET_DIR" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '_')"
+
+  if command_exists docker && [ -n "$(docker ps -a --filter "label=com.docker.compose.project=${compose_project_name}" --format '{{.Names}}' 2>/dev/null)" ]; then
     compose_project=true
   fi
 
-  if command_exists docker && docker volume inspect "${TARGET_DIR,,}_pgdata" >/dev/null 2>&1; then
-    db_volume=true
-  elif command_exists docker && docker volume ls --format '{{.Name}}' 2>/dev/null | grep -Eq '(^|_)pgdata$'; then
-    db_volume=true
+  if command_exists docker && docker ps -a --format '{{.Names}}' 2>/dev/null | grep -Eq '^elahe-(app|db|caddy)$'; then
+    known_containers=true
   fi
 
-  log_info "Detected state: dir=${dir_exists}, env=${env_exists}, compose=${compose_project}, db_volume=${db_volume}"
+  log_info "Detected state: dir=${dir_exists}, env=${env_exists}, compose_project=${compose_project}, known_containers=${known_containers}, project_files=${known_project_files}"
 
-  if [ "$dir_exists" = false ] && [ "$env_exists" = false ] && [ "$compose_project" = false ] && [ "$db_volume" = false ]; then
+  if [ "$dir_exists" = false ] && [ "$env_exists" = false ] && [ "$compose_project" = false ] && [ "$known_containers" = false ] && [ "$known_project_files" = false ]; then
     INSTALL_MODE="fresh"
     log_success "No prior installation detected -> fresh install mode."
     return
@@ -276,6 +298,34 @@ install_docker_apt() {
   fi
 }
 
+ensure_docker_ready() {
+  log_step "Docker daemon readiness"
+
+  if docker info >/dev/null 2>&1; then
+    log_success "Docker daemon is reachable."
+    return
+  fi
+
+  if command_exists systemctl; then
+    log_warn "Docker daemon not ready. Trying to enable/start docker service."
+    systemctl enable docker >/dev/null 2>&1 || true
+    systemctl start docker >/dev/null 2>&1 || true
+  fi
+
+  local attempts=20
+  while [ "$attempts" -gt 0 ]; do
+    if docker info >/dev/null 2>&1; then
+      log_success "Docker daemon is reachable."
+      return
+    fi
+    sleep 2
+    attempts=$((attempts - 1))
+  done
+
+  log_error "Docker daemon is not ready. Ensure docker service is running, then re-run installer."
+  exit 1
+}
+
 check_dependencies() {
   log_step "Dependency checks"
   local deps=(git curl openssl)
@@ -332,6 +382,20 @@ collect_domain_ssl_input() {
   else
     USE_DOMAIN=false
   fi
+}
+
+choose_proxy_config_action_upgrade() {
+  log_step "Proxy configuration on upgrade"
+  echo -e "${CYAN}Upgrade proxy handling:${NC}"
+  echo "  1) Preserve existing proxy config (recommended)"
+  echo "  2) Regenerate proxy config (change ingress/domain/IP mode)"
+  local choice
+  choice=$(read_tty_input "${YELLOW}Enter choice [1-2]:${NC} " "1")
+  case "$choice" in
+    2) PROXY_CONFIG_ACTION="regenerate" ;;
+    *) PROXY_CONFIG_ACTION="preserve" ;;
+  esac
+  log_info "Proxy config action: $PROXY_CONFIG_ACTION"
 }
 
 prompt_admin_credentials_fresh() {
@@ -412,6 +476,15 @@ write_admin_secret_file() {
 }
 
 configure_caddyfile() {
+  if [ "$INSTALL_MODE" = "upgrade" ] && [ "$PROXY_CONFIG_ACTION" = "preserve" ]; then
+    if [ ! -f "$TARGET_DIR/Caddyfile" ]; then
+      log_error "Cannot preserve Caddyfile: $TARGET_DIR/Caddyfile not found."
+      exit 1
+    fi
+    log_info "Keeping existing Caddyfile unchanged."
+    return
+  fi
+
   if [ "$USE_DOMAIN" = true ]; then
     cat > "$TARGET_DIR/Caddyfile" <<EOC
 {
@@ -475,14 +548,17 @@ ensure_install_directory() {
     local backup_dir="${TARGET_DIR}.backup.${backup_stamp}"
     log_info "Creating reinstall backup at ${backup_dir}."
     cp -a "$TARGET_DIR" "$backup_dir"
+    UPGRADE_BACKUP_DIR="$backup_dir"
   fi
 }
 
 backup_upgrade_artifacts() {
-  [ "$INSTALL_MODE" = "upgrade" ] || return 0
+  [ "$INSTALL_MODE" = "upgrade" ] || [ "$INSTALL_MODE" = "reinstall" ] || return 0
 
-  local backup_dir
-  backup_dir="$TARGET_DIR/.installer-backups/$(date -u +"%Y%m%d-%H%M%S")"
+  local backup_dir base_dir
+  base_dir="$TARGET_DIR"
+  [ "$INSTALL_MODE" = "reinstall" ] && base_dir="."
+  backup_dir="$base_dir/.installer-backups/$(date -u +"%Y%m%d-%H%M%S")"
   mkdir -p "$backup_dir"
 
   [ -f "$TARGET_DIR/.env" ] && cp "$TARGET_DIR/.env" "$backup_dir/.env"
@@ -491,17 +567,17 @@ backup_upgrade_artifacts() {
   [ -f "$TARGET_DIR/compose.prod.yaml" ] && cp "$TARGET_DIR/compose.prod.yaml" "$backup_dir/compose.prod.yaml"
   [ -f "$TARGET_DIR/compose_prod_full.yml" ] && cp "$TARGET_DIR/compose_prod_full.yml" "$backup_dir/compose_prod_full.yml"
 
-  log_success "Upgrade backup created: $backup_dir"
+  UPGRADE_BACKUP_DIR="$backup_dir"
+  log_success "Backup created: $backup_dir"
 }
 
 sync_source_tree() {
   log_step "Source synchronization"
 
   if [ "$INSTALL_MODE" = "fresh" ] || [ "$INSTALL_MODE" = "reinstall" ]; then
-    if [ -d "$TARGET_DIR/.git" ]; then
+    if [ -e "$TARGET_DIR" ]; then
       rm -rf "$TARGET_DIR"
     fi
-    mkdir -p "$TARGET_DIR"
     git clone --branch "$DEFAULT_BRANCH" --depth 1 "$REPO_URL" "$TARGET_DIR"
     return
   fi
@@ -545,18 +621,17 @@ configure_runtime_env() {
     prompt_admin_credentials_fresh
   fi
 
+  local should_update_ingress_env=false
+  if [ "$INSTALL_MODE" != "upgrade" ] || [ "$PROXY_CONFIG_ACTION" = "regenerate" ]; then
+    should_update_ingress_env=true
+  fi
+
   if [ "$USE_DOMAIN" = true ]; then
     env_set_if_missing "APP_URL" "https://${DOMAIN_NAME}"
     env_set_if_missing "ALLOWED_ORIGINS" "https://${DOMAIN_NAME},https://www.${DOMAIN_NAME}"
-    if [ "$INSTALL_MODE" = "upgrade" ]; then
-      local change_origins
-      change_origins=$(read_tty_input "${CYAN}Update APP_URL/ALLOWED_ORIGINS to domain values? [y/N]:${NC} " "N")
-      case "$change_origins" in
-        y|Y|yes|YES)
-          env_set_explicit "APP_URL" "https://${DOMAIN_NAME}"
-          env_set_explicit "ALLOWED_ORIGINS" "https://${DOMAIN_NAME},https://www.${DOMAIN_NAME}"
-          ;;
-      esac
+    if [ "$should_update_ingress_env" = true ]; then
+      env_set_explicit "APP_URL" "https://${DOMAIN_NAME}"
+      env_set_explicit "ALLOWED_ORIGINS" "https://${DOMAIN_NAME},https://www.${DOMAIN_NAME}"
     fi
   else
     local server_ip
@@ -567,15 +642,9 @@ configure_runtime_env() {
     env_set_if_missing "APP_URL" "$ip_origin"
     env_set_if_missing "ALLOWED_ORIGINS" "$ip_origin,http://localhost:3000,http://127.0.0.1:3000"
 
-    if [ "$INSTALL_MODE" = "upgrade" ]; then
-      local change_ip_origins
-      change_ip_origins=$(read_tty_input "${CYAN}Update APP_URL/ALLOWED_ORIGINS for IP-only mode (${ip_origin})? [y/N]:${NC} " "N")
-      case "$change_ip_origins" in
-        y|Y|yes|YES)
-          env_set_explicit "APP_URL" "$ip_origin"
-          env_set_explicit "ALLOWED_ORIGINS" "$ip_origin,http://localhost:3000,http://127.0.0.1:3000"
-          ;;
-      esac
+    if [ "$should_update_ingress_env" = true ]; then
+      env_set_explicit "APP_URL" "$ip_origin"
+      env_set_explicit "ALLOWED_ORIGINS" "$ip_origin,http://localhost:3000,http://127.0.0.1:3000"
     fi
   fi
 
@@ -616,8 +685,10 @@ configure_runtime_env() {
     else
       env_set_if_missing "ADMIN_BOOTSTRAP_FORCE_PASSWORD_CHANGE" "false"
     fi
+    env_set_if_missing "ADMIN_BOOTSTRAP_RESET_EXISTING" "false"
   else
     env_set_if_missing "ADMIN_BOOTSTRAP_FORCE_PASSWORD_CHANGE" "false"
+    env_set_if_missing "ADMIN_BOOTSTRAP_RESET_EXISTING" "false"
   fi
 
   apply_env_updates "$env_file"
@@ -673,13 +744,111 @@ launch_services() {
   log_success "Compose services started."
 }
 
+get_service_container_id() {
+  local service="$1"
+  (
+    cd "$TARGET_DIR"
+    docker compose ps -q "$service" 2>/dev/null | head -n1
+  )
+}
+
+wait_for_container_state() {
+  local service="$1"
+  local expected="$2"
+  local timeout="${3:-180}"
+  local elapsed=0
+  local container_id state
+
+  while [ "$elapsed" -lt "$timeout" ]; do
+    container_id="$(get_service_container_id "$service")"
+    if [ -n "$container_id" ]; then
+      state="$(docker inspect -f '{{.State.Status}}' "$container_id" 2>/dev/null || true)"
+      [ "$state" = "$expected" ] && return 0
+    fi
+    sleep 3
+    elapsed=$((elapsed + 3))
+  done
+  return 1
+}
+
+wait_for_container_health() {
+  local service="$1"
+  local timeout="${2:-240}"
+  local elapsed=0
+  local container_id health state
+
+  while [ "$elapsed" -lt "$timeout" ]; do
+    container_id="$(get_service_container_id "$service")"
+    if [ -n "$container_id" ]; then
+      health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_id" 2>/dev/null || true)"
+      state="$(docker inspect -f '{{.State.Status}}' "$container_id" 2>/dev/null || true)"
+      if [ "$health" = "healthy" ]; then
+        return 0
+      fi
+      if [ "$state" = "exited" ] || [ "$health" = "unhealthy" ]; then
+        return 1
+      fi
+    fi
+    sleep 4
+    elapsed=$((elapsed + 4))
+  done
+
+  return 1
+}
+
+print_failure_diagnostics() {
+  log_error "Startup verification failed. Collecting diagnostics."
+  (
+    cd "$TARGET_DIR"
+    docker compose ps || true
+    for svc in db app caddy; do
+      local cid
+      cid="$(docker compose ps -q "$svc" 2>/dev/null | head -n1)"
+      if [ -n "$cid" ]; then
+        echo "--- logs: $svc ---"
+        docker logs --tail 120 "$cid" || true
+      fi
+    done
+  )
+  if [ -n "$UPGRADE_BACKUP_DIR" ]; then
+    log_warn "Rollback guidance: restore from backup at $UPGRADE_BACKUP_DIR"
+  fi
+}
+
+verify_post_launch_health() {
+  log_step "Post-launch health verification"
+
+  if ! wait_for_container_health "db" 180; then
+    print_failure_diagnostics
+    exit 1
+  fi
+  log_success "Database container is healthy."
+
+  if ! wait_for_container_health "app" 300; then
+    print_failure_diagnostics
+    exit 1
+  fi
+  log_success "App container is healthy."
+
+  if ! wait_for_container_state "caddy" "running" 120; then
+    print_failure_diagnostics
+    exit 1
+  fi
+  log_success "Caddy container is running."
+}
+
 print_summary() {
   log_step "Complete"
   echo "Mode: $INSTALL_MODE"
   echo "App URL: ${RESOLVED_APP_URL}"
   echo "Project dir: $TARGET_DIR"
+  echo "Config policy: preserve .env/Caddyfile/operator overrides by default; regenerate only when explicitly selected."
   if [ -n "$ADMIN_CREATED_FILE" ]; then
     echo "Bootstrap admin credentials saved to: $ADMIN_CREATED_FILE"
+  fi
+  if [ "$INSTALL_MODE" = "upgrade" ]; then
+    echo "Admin bootstrap env vars are create-only by default and do not overwrite an existing admin user."
+    echo "To reset an existing admin via env, set ADMIN_BOOTSTRAP_RESET_EXISTING=true for a one-time reset."
   fi
   echo "No admin password was printed to terminal output."
   echo "Caddy handles TLS renewals internally; no extra cron entry was installed."
@@ -691,19 +860,28 @@ main() {
     exit 1
   fi
 
+  require_root
   choose_install_mode
   preflight_checks
   check_dependencies
+  ensure_docker_ready
   ensure_install_directory
   backup_upgrade_artifacts
   sync_source_tree
-  collect_domain_ssl_input
+  if [ "$INSTALL_MODE" = "upgrade" ]; then
+    choose_proxy_config_action_upgrade
+  fi
+  if [ "$INSTALL_MODE" != "upgrade" ] || [ "$PROXY_CONFIG_ACTION" = "regenerate" ]; then
+    collect_domain_ssl_input
+  fi
   configure_caddyfile
   configure_runtime_env
   configure_npmrc
   validate_caddy_config
   launch_services
+  verify_post_launch_health
   print_summary
 }
 
+trap on_error ERR
 main "$@"

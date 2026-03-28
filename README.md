@@ -120,11 +120,15 @@ The installer now supports explicit modes:
 3. **Reinstall** (backs up existing directory first, then re-installs)
 
 Installer safety behavior:
+- Preserves operator-managed config by default on upgrade (`.env`, `Caddyfile`, compose overrides). Regeneration happens only when explicitly selected.
+- Upgrade now prompts for proxy behavior: **preserve existing proxy config** (default) or **regenerate proxy config** (for ingress/domain/IP changes).
 - Preserves existing production secrets on upgrade (`POSTGRES_*`, `DATABASE_URL`, auth/encryption/download secrets, admin credentials) unless you explicitly change values.
 - Creates timestamped upgrade backups (`.env`, `Caddyfile`, compose files) before update steps.
 - Aborts upgrades when git sync fails or the worktree is dirty (no implicit `rm -rf` fallback).
 - Uses Caddy on `:80/:443`; in IP-only mode the generated `APP_URL` uses `http://<server-ip>` (no internal `:3000` mismatch).
 - Never prints bootstrap admin password in terminal output; auto-generated credentials are written once to a local secrets file with restrictive permissions.
+- Verifies post-launch health and only reports success after DB and app health checks pass and Caddy is running.
+- `ADMIN_USERNAME`/`ADMIN_PASSWORD` are create-only by default; they do **not** replace an existing admin on upgrade unless `ADMIN_BOOTSTRAP_RESET_EXISTING=true` is set intentionally for a one-time reset.
 
 ---
 

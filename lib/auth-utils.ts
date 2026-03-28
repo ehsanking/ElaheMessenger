@@ -24,9 +24,10 @@ export async function initializeAdmin() {
         ]
       },
     });
+    const allowResetExisting = (process.env.ADMIN_BOOTSTRAP_RESET_EXISTING ?? 'false').toLowerCase() === 'true';
+    const bootstrapForcePasswordChange = (process.env.ADMIN_BOOTSTRAP_FORCE_PASSWORD_CHANGE ?? 'true').toLowerCase() === 'true';
 
     if (!adminExists) {
-      const bootstrapForcePasswordChange = (process.env.ADMIN_BOOTSTRAP_FORCE_PASSWORD_CHANGE ?? 'true').toLowerCase() === 'true';
       const passwordHash = await argon2.hash(adminPassword);
       await prisma.user.create({
         data: {
@@ -44,10 +45,28 @@ export async function initializeAdmin() {
         },
       });
       logger.info('Bootstrap admin created successfully.', { adminUsername, bootstrapForcePasswordChange });
-    } else {
-      logger.info('Admin user already exists. Skipping bootstrap creation.', {
+    } else if (allowResetExisting) {
+      const passwordHash = await argon2.hash(adminPassword);
+      await prisma.user.update({
+        where: { id: adminExists.id },
+        data: {
+          username: adminUsername,
+          role: 'ADMIN',
+          isApproved: true,
+          passwordHash,
+          needsPasswordChange: bootstrapForcePasswordChange,
+        },
+      });
+      logger.warn('Existing admin credentials were reset from env because ADMIN_BOOTSTRAP_RESET_EXISTING=true.', {
         adminUsername,
         existingAdminId: adminExists.id,
+        bootstrapForcePasswordChange,
+      });
+    } else {
+      logger.info('Admin user already exists. Env bootstrap credentials are create-only and were not applied.', {
+        adminUsername,
+        existingAdminId: adminExists.id,
+        allowResetExisting,
       });
     }
   } catch (error: unknown) {
