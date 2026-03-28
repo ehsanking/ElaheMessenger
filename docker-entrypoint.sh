@@ -12,6 +12,11 @@ warn() {
   echo "[entrypoint] WARNING: $1" >&2
 }
 
+fail() {
+  echo "[entrypoint] ERROR: $1" >&2
+  exit 1
+}
+
 # ── Prisma binary resolution ──────────────────
 # The standalone Next.js output does NOT include node_modules/.bin symlinks.
 # We locate the prisma CLI explicitly to avoid "prisma: not found".
@@ -31,31 +36,32 @@ run_prisma() {
   fi
 }
 
-# ── POSIX-compatible variable length check (no bash-isms) ──
-require_min_length() {
+# ── Strict production secret validation (POSIX-compatible) ──
+require_strong_value() {
   _var_name="$1"
   _min_length="$2"
+  _deny_list="$3"
 
-  # Use eval for POSIX-compatible indirect variable expansion
   eval "_value=\${${_var_name}:-}"
 
-  if [ -z "$_value" ]; then
-    warn "$_var_name is not set. The application will continue, but you must set a strong value in production."
-    return 0
-  fi
+  [ -z "$_value" ] && fail "$_var_name is required in production."
 
   _value_length=$(printf "%s" "$_value" | wc -c | tr -d ' ')
-  if [ "$_value_length" -lt "$_min_length" ]; then
-    warn "$_var_name is shorter than ${_min_length} characters. Please rotate it immediately."
-  fi
+  [ "$_value_length" -lt "$_min_length" ] && fail "$_var_name must be at least ${_min_length} characters in production."
+
+  _normalized=$(printf "%s" "$_value" | tr '[:upper:]' '[:lower:]')
+  for _weak in $_deny_list; do
+    [ "$_normalized" = "$_weak" ] && fail "$_var_name uses a weak or placeholder value in production."
+  done
 }
 
 log "Validating runtime configuration..."
-require_min_length JWT_SECRET 32
-require_min_length ENCRYPTION_KEY 32
-
-if [ "${ADMIN_PASSWORD:-admin}" = "admin" ]; then
-  warn "Default admin password is active. Change ADMIN_PASSWORD before exposing the service publicly."
+APP_ENV_EFFECTIVE="${APP_ENV:-${NODE_ENV:-development}}"
+if [ "$APP_ENV_EFFECTIVE" = "production" ]; then
+  require_strong_value JWT_SECRET 32 "changeme changeme_jwt_secret_min32chars_xxx your-super-secret-jwt-key-change-this-in-production"
+  require_strong_value ENCRYPTION_KEY 32 "changeme changeme_encryption_key_32chars! your-32-character-encryption-key"
+  require_strong_value ADMIN_PASSWORD 16 "admin changeme password change_this_admin_password"
+  require_strong_value POSTGRES_PASSWORD 16 "postgres pass password"
 fi
 
 # ── Wait for database to be ready ─────────────
@@ -102,24 +108,16 @@ else
   warn "Could not parse DATABASE_URL — skipping database wait."
 fi
 
-# ── Run Prisma migrations ─────────────────────
-if [ -n "$PRISMA_BIN" ]; then
-  log "Running Prisma database migrations..."
-  if ! run_prisma migrate deploy --schema=./prisma/schema.prisma 2>&1; then
-    warn "prisma migrate deploy failed. Trying db push as fallback..."
-    if ! run_prisma db push --schema=./prisma/schema.prisma --accept-data-loss --skip-generate 2>&1; then
-      warn "db push also failed. Database may need manual setup."
-    fi
-  else
-    # Safety net: ensure schema and tables exist even if migration history was out of sync.
-    # This prevents runtime errors like missing AdminSettings on first login.
-    log "Running Prisma schema sync safety check (db push --skip-generate)..."
-    if ! run_prisma db push --schema=./prisma/schema.prisma --skip-generate 2>&1; then
-      warn "Schema sync safety check failed after migrate deploy."
-    fi
-  fi
-else
-  warn "Prisma CLI not available. Skipping migrations — database must be set up manually."
+# ── Run Prisma migrations (fail-fast) ─────────
+if [ -z "$PRISMA_BIN" ]; then
+  warn "Prisma CLI not available. Cannot run required migrations."
+  exit 1
+fi
+
+log "Running Prisma database migrations (migrate deploy)..."
+if ! run_prisma migrate deploy --schema=./prisma/schema.prisma 2>&1; then
+  warn "prisma migrate deploy failed. Refusing schema sync fallback in production."
+  exit 1
 fi
 
 # ── Locate and start the server ───────────────
