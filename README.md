@@ -325,7 +325,7 @@ npm run backup       # Create database backup archive
 
 Released under the [MIT License](./LICENSE).
 
-Copyright © 2025 Elahe Messenger Contributors.
+Copyright © 2026 Elahe Messenger Contributors.
 
 ---
 
