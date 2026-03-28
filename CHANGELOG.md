@@ -6,6 +6,8 @@
 - Removed startup secret-generation side effects from `server.ts`; production startup now validates required secrets and placeholders fail fast.
 - Hardened installer network behavior by removing global git SSL verification disable and insecure `curl -k` usage.
 - Made DNS and Docker daemon mutation in `install.sh` opt-in and declared installer Linux-only.
+- Hardened installer upgrade/reinstall flow: explicit proxy preserve/regenerate prompt, deterministic reinstall directory reset, root privilege fail-fast, Docker daemon readiness gate, and post-launch container health verification before success.
+- Clarified bootstrap admin semantics so env credentials are create-only by default; added explicit one-time reset gate (`ADMIN_BOOTSTRAP_RESET_EXISTING=true`).
 - Removed seeded placeholder E2EE key material for bootstrap admin; account now starts with empty keys and must register client keys after login.
 - Tightened same-origin enforcement to reject missing `Origin`/`Host` on protected mutation routes.
 - Minimized session-cookie claims to essential auth/session fields only; user profile metadata is now loaded server-side from the database.
