@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { loginUser } from '@/app/actions/auth';
 import { assertSameOrigin } from '@/lib/request-security';
 import { issueSession } from '@/lib/session';
+import { getRequestIdForRequest, respondWithInternalError, respondWithSafeError } from '@/lib/http-errors';
 
 /**
  * Handles the login request. This endpoint accepts JSON with
@@ -12,6 +13,7 @@ import { issueSession } from '@/lib/session';
  * This endpoint does not rely on any temporary routes.
  */
 export async function POST(request: Request) {
+  const requestId = getRequestIdForRequest(request);
   try {
     assertSameOrigin(request);
 
@@ -23,7 +25,12 @@ export async function POST(request: Request) {
     });
 
     if (result.error) {
-      return NextResponse.json({ error: result.error }, { status: 401 });
+      return respondWithSafeError({
+        status: 401,
+        message: result.error,
+        code: 'REQUEST_REJECTED',
+        requestId,
+      });
     }
 
     if ('requires2FA' in result && result.requires2FA) {
@@ -40,7 +47,13 @@ export async function POST(request: Request) {
       !('numericId' in result) ||
       !('role' in result)
     ) {
-      return NextResponse.json({ error: 'Invalid login response.' }, { status: 500 });
+      return respondWithSafeError({
+        status: 500,
+        message: 'Invalid login response.',
+        code: 'INTERNAL_ERROR',
+        action: 'Retry login. If this persists, contact an administrator with the requestId.',
+        requestId,
+      });
     }
 
     const response = NextResponse.json({
@@ -69,9 +82,6 @@ export async function POST(request: Request) {
 
     return response;
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Login failed.' },
-      { status: 500 },
-    );
+    return respondWithInternalError('Login API', error, { requestId, action: 'Retry login shortly.' });
   }
 }

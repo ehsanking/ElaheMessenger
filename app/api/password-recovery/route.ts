@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getRecoveryQuestion, recoverPassword } from '@/app/actions/auth';
 import { assertSameOrigin } from '@/lib/request-security';
+import { getRequestIdForRequest, respondWithInternalError, respondWithSafeError } from '@/lib/http-errors';
 
 export async function POST(request: Request) {
+  const requestId = getRequestIdForRequest(request);
   try {
     assertSameOrigin(request);
 
@@ -15,7 +17,12 @@ export async function POST(request: Request) {
       });
 
       if (result.error) {
-        return NextResponse.json({ error: result.error }, { status: 400 });
+        return respondWithSafeError({
+          status: 400,
+          message: result.error,
+          code: 'REQUEST_REJECTED',
+          requestId,
+        });
       }
 
       return NextResponse.json({
@@ -33,17 +40,25 @@ export async function POST(request: Request) {
       });
 
       if (result.error) {
-        return NextResponse.json({ error: result.error }, { status: 400 });
+        return respondWithSafeError({
+          status: 400,
+          message: result.error,
+          code: 'REQUEST_REJECTED',
+          requestId,
+        });
       }
 
       return NextResponse.json({ success: true });
     }
 
-    return NextResponse.json({ error: 'Invalid action.' }, { status: 400 });
+    return respondWithSafeError({
+      status: 400,
+      message: 'Invalid action.',
+      code: 'VALIDATION_ERROR',
+      action: 'Use action "question" or "reset".',
+      requestId,
+    });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Password recovery failed.' },
-      { status: 500 },
-    );
+    return respondWithInternalError('Password recovery API', error, { requestId });
   }
 }

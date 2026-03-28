@@ -45,7 +45,10 @@ export async function initializeAdmin() {
       });
       logger.info('Bootstrap admin created successfully.', { adminUsername, bootstrapForcePasswordChange });
     } else {
-      logger.info('Admin user already exists.');
+      logger.info('Admin user already exists. Skipping bootstrap creation.', {
+        adminUsername,
+        existingAdminId: adminExists.id,
+      });
     }
   } catch (error: unknown) {
     if (typeof error === 'object' && error && 'code' in error && error.code === 'P2002') {

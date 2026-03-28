@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getSessionFromRequest } from '@/lib/session';
 import { bootstrapDeviceSession } from '@/lib/e2ee-runtime-service';
+import { getRequestIdForRequest, respondWithInternalError, respondWithSafeError } from '@/lib/http-errors';
 
 export async function POST(request: Request) {
+  const requestId = getRequestIdForRequest(request);
   try {
     const session = getSessionFromRequest(request);
-    if (!session) return NextResponse.json({ error: 'Authentication required.' }, { status: 401 });
+    if (!session) {
+      return respondWithSafeError({ status: 401, message: 'Authentication required.', code: 'AUTH_REQUIRED', requestId });
+    }
 
     const body = await request.json();
     const initiatorDeviceId = typeof body?.initiatorDeviceId === 'string' ? body.initiatorDeviceId.trim() : '';
@@ -15,7 +19,13 @@ export async function POST(request: Request) {
     const ratchetPublicKey = typeof body?.ratchetPublicKey === 'string' ? body.ratchetPublicKey.trim() : null;
 
     if (!initiatorDeviceId || !recipientUserId || !initialMessageKeyId) {
-      return NextResponse.json({ error: 'Missing bootstrap fields.' }, { status: 400 });
+      return respondWithSafeError({
+        status: 400,
+        message: 'Missing bootstrap fields.',
+        code: 'VALIDATION_ERROR',
+        action: 'Provide initiatorDeviceId, recipientUserId, and initialMessageKeyId.',
+        requestId,
+      });
     }
 
     const result = await bootstrapDeviceSession({
@@ -29,6 +39,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to bootstrap session.' }, { status: 500 });
+    return respondWithInternalError('E2EE session bootstrap', error, { requestId });
   }
 }

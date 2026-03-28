@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { respondWithInternalError, respondWithSafeError } from '@/lib/http-errors';
 
 export async function GET(_request: Request, context: { params: Promise<{ userId: string }> }) {
   try {
     const { userId } = await context.params;
     const normalizedUserId = typeof userId === 'string' ? userId.trim() : '';
-    if (!normalizedUserId) return NextResponse.json({ error: 'User id is required.' }, { status: 400 });
+    if (!normalizedUserId) {
+      return respondWithSafeError({ status: 400, message: 'User id is required.', code: 'VALIDATION_ERROR' });
+    }
 
     const user = await prisma.user.findUnique({
       where: { id: normalizedUserId },
@@ -24,7 +27,7 @@ export async function GET(_request: Request, context: { params: Promise<{ userId
       },
     });
 
-    if (!user) return NextResponse.json({ error: 'User not found.' }, { status: 404 });
+    if (!user) return respondWithSafeError({ status: 404, message: 'User not found.', code: 'REQUEST_REJECTED' });
 
     return NextResponse.json({
       success: true,
@@ -46,6 +49,6 @@ export async function GET(_request: Request, context: { params: Promise<{ userId
       },
     });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Failed to fetch E2EE public keys.' }, { status: 500 });
+    return respondWithInternalError('E2EE public keys API', error);
   }
 }

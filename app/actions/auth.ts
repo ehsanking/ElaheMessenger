@@ -30,6 +30,7 @@ import {
 // be performed on behalf of another user simply by passing a different userId.
 import { verifySessionToken, SESSION_COOKIE_NAME } from '@/lib/session';
 import { verifyRecaptchaToken } from '@/lib/google-recaptcha';
+import { createRequestId } from '@/lib/observability';
 
 /**
  * Reads the session token from the request cookies and verifies it.  If the cookie is
@@ -138,6 +139,15 @@ const getClientIp = async () => {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
+
+const internalActionError = (operation: string) => {
+  const requestId = createRequestId();
+  return {
+    error: `Request failed during ${operation}. Retry once, then contact an administrator with requestId ${requestId}.`,
+    errorCode: 'INTERNAL_ERROR' as const,
+    requestId,
+  };
+};
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const sanitizeAdminSettingsUpdate = (input: unknown): AdminSettingsUpdate | null => {
@@ -343,7 +353,7 @@ export async function registerUser(formData: RegisterUserInput) {
     logger.error('Registration error.', {
       error: error instanceof Error ? error.message : String(error)
     });
-    return { error: 'Internal server error' };
+    return internalActionError('registration');
   }
 }
 
@@ -504,7 +514,7 @@ export async function loginUser(formData: LoginUserInput) {
     logger.error('Login error.', {
       error: error instanceof Error ? error.message : String(error)
     });
-    return { error: 'Internal server error' };
+    return internalActionError('login');
   }
 }
 
@@ -541,7 +551,7 @@ export async function getRecoveryQuestion(formData: GetRecoveryQuestionInput) {
     logger.error('Get recovery question error.', {
       error: error instanceof Error ? error.message : String(error)
     });
-    return { error: 'Internal server error' };
+    return internalActionError('recovery question lookup');
   }
 }
 
@@ -617,7 +627,7 @@ export async function recoverPassword(formData: RecoverPasswordInput) {
     logger.error('Recover password error.', {
       error: error instanceof Error ? error.message : String(error)
     });
-    return { error: 'Internal server error' };
+    return internalActionError('password recovery');
   }
 }
 
@@ -680,7 +690,7 @@ export async function updateAdminCredentials(formData: UpdateAdminCredentialsInp
     logger.error('Update admin error.', {
       error: error instanceof Error ? error.message : String(error)
     });
-    return { error: 'Internal server error' };
+    return internalActionError('admin credential update');
   }
 }
 
