@@ -35,5 +35,10 @@ export async function createSecureAttachmentMessage(options: {
     }),
   });
 
-  return composeResponse.json();
+  const composePayload = await composeResponse.json();
+  return {
+    ...composePayload,
+    downloadToken: uploadResult.downloadToken,
+    headerDownloadUrl: uploadResult.headerDownloadUrl || uploadResult.downloadUrl,
+  };
 }

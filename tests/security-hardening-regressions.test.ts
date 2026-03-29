@@ -18,7 +18,7 @@ describe('security hardening regressions', () => {
   it('accepts download token header and keeps token bound to conversation/user/file', () => {
     const routeSource = fs.readFileSync('app/api/upload-secure/[fileId]/route.ts', 'utf8');
     expect(routeSource).toContain("req.headers.get('x-download-token')");
-    expect(routeSource).toContain('verifySecureDownloadToken(token, fileId, session.userId, conversationId)');
+    expect(routeSource).toContain('verifySecureDownloadToken(token, fileId, user.id, conversationId)');
   });
 
   it('stores encrypted TOTP secrets and migrates plaintext on read', () => {
