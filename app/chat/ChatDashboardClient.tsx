@@ -45,6 +45,9 @@ import { usePushNotifications } from '@/hooks/usePushNotifications';
 import {
   encryptMessage, decryptMessage, getOrCreateSessionKey, getIdentityPrivateKey,
 } from '@/lib/crypto';
+import { parseSecureAttachmentFromLegacyMessage } from '@/lib/e2ee-legacy-bridge';
+import { createSecureAttachmentMessage } from '@/lib/e2ee-chat-runtime';
+import { E2EE_UNAVAILABLE_WARNING, prepareDirectMessagePayload } from '@/app/chat/message-send-security';
 
 // Import shared type definitions to replace use of `any`.
 import type { ChatUser, Report, AdminSettings, AuditLog, SocketMessagePayload, DeliveryState } from '@/lib/types';
@@ -180,6 +183,7 @@ function ChatDashboardContent() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [draftState, setDraftState] = useState<DraftState>('idle');
+  const [composeWarning, setComposeWarning] = useState<string | null>(null);
   // Mobile-specific state
   const [mobileTab, setMobileTab] = useState<MobileTab>('chats');
   const [mobileShowChat, setMobileShowChat] = useState(false);
@@ -188,6 +192,7 @@ function ChatDashboardContent() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingQueueRef = useRef<PendingQueueItem[]>([]);
+  const attachmentTokensRef = useRef<Record<string, string>>({});
   const pendingQueueStorageKey = buildPendingQueueStorageKey(currentUser?.id);
   const currentConversationId = buildConversationId(currentUser?.id, selectedRecipient?.id, selectedGroup?.id);
 
@@ -693,14 +698,18 @@ function ChatDashboardContent() {
     let ciphertext = input;
     let nonce = '';
 
-    if (selectedRecipient && sessionKey) {
-      try {
-        const encrypted = await encryptMessage(sessionKey, input);
-        ciphertext = encrypted.ciphertext;
-        nonce = encrypted.nonce;
-      } catch (err) {
-        console.error('Encryption failed, sending plaintext:', err);
+    if (selectedRecipient) {
+      const prepared = await prepareDirectMessagePayload({
+        plaintext: input,
+        sessionKey,
+        encryptMessageFn: encryptMessage,
+      });
+      if (!prepared.ok) {
+        setComposeWarning(prepared.warning);
+        return;
       }
+      ciphertext = prepared.ciphertext;
+      nonce = prepared.nonce;
     }
 
     const tempId = `${Date.now()}`;
@@ -730,6 +739,7 @@ function ChatDashboardContent() {
     }
 
     setInput('');
+    setComposeWarning(null);
     if (currentConversationId) {
       const storageKey = buildDraftStorageKey(currentUser.id, selectedRecipient?.id, selectedGroup?.id);
       if (storageKey) localStorage.removeItem(storageKey);
@@ -742,55 +752,129 @@ function ChatDashboardContent() {
     }
   };
 
+  const handleSecureAttachmentDownload = useCallback(async (message: ChatMessage) => {
+    if (!message.text) {
+      setComposeWarning('Secure attachment metadata is unavailable.');
+      return;
+    }
+    const payload = parseSecureAttachmentFromLegacyMessage(message.text);
+    if (!payload) {
+      setComposeWarning('Secure attachment metadata is unavailable.');
+      return;
+    }
+    const fileId = payload.downloadUrl.split('/').pop()?.split('?')[0];
+    if (!fileId) {
+      setComposeWarning('Secure attachment metadata is unavailable.');
+      return;
+    }
+    const token = attachmentTokensRef.current[fileId];
+    if (!token) {
+      setComposeWarning('Secure download token unavailable — retry from a new upload.');
+      return;
+    }
+    const response = await fetch(`/api/upload-secure/${fileId}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { 'x-download-token': token },
+    });
+    if (!response.ok) {
+      setComposeWarning('Secure download failed — refresh and try again.');
+      return;
+    }
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = message.fileName || payload.originalFileName || 'attachment.bin';
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(objectUrl);
+    setComposeWarning(null);
+  }, []);
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !currentUser || (!selectedRecipient && !selectedGroup)) return;
 
+    if (selectedGroup) {
+      setComposeWarning('Secure attachments are currently available only for direct messages.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+    if (selectedRecipient && !sessionKey) {
+      setComposeWarning(E2EE_UNAVAILABLE_WARNING);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
     setIsUploading(true);
     const conversationId = buildConversationId(currentUser.id, selectedRecipient?.id, selectedGroup?.id);
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('conversationId', conversationId);
-    formData.append('wrappedFileKey', btoa(`key:${file.name}:${file.size}`));
-    formData.append('wrappedFileKeyNonce', btoa(`nonce:${Date.now()}`));
-    formData.append('fileNonce', btoa(`file:${Date.now()}`));
 
     try {
-      const res = await fetch('/api/upload-secure', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (data.error) { alert(data.error); return; }
+      if (!sessionKey) {
+        setComposeWarning('Secure attachment upload requires a direct-message E2EE session key.');
+        return;
+      }
+      const composed = await createSecureAttachmentMessage({
+        file,
+        conversationKey: sessionKey,
+        conversationId,
+        originalMimeType: file.type || 'application/octet-stream',
+      });
+      if (!composed?.success || !composed?.message) {
+        setComposeWarning(typeof composed?.error === 'string' ? composed.error : 'Failed to upload file securely.');
+        return;
+      }
+      const messagePayload = composed.message as {
+        type: number;
+        ciphertext: string;
+        nonce: string;
+        fileName?: string | null;
+        fileSize?: number | null;
+      };
+      if (messagePayload.type !== 2) {
+        setComposeWarning('Secure attachment composition failed.');
+        return;
+      }
+
+      const securePayload = parseSecureAttachmentFromLegacyMessage(messagePayload.ciphertext);
+      const fileId = securePayload?.downloadUrl.split('/').pop()?.split('?')[0];
+      if (fileId && typeof composed.downloadToken === 'string' && composed.downloadToken) {
+        attachmentTokensRef.current[fileId] = composed.downloadToken;
+      }
 
       const tempId = `${Date.now()}`;
       const queued: PendingQueueItem = {
         tempId,
         recipientId: selectedRecipient?.id,
         groupId: selectedGroup?.id,
-        ciphertext: `Sent a file: ${data.fileName}` ,
-        nonce: '',
-        plaintext: `Sent a file: ${data.fileName}` ,
-        type: 2,
-        fileUrl: data.downloadUrl,
-        fileName: data.fileName,
-        fileSize: data.fileSize,
+        ciphertext: messagePayload.ciphertext,
+        nonce: messagePayload.nonce || '',
+        plaintext: `Sent a file: ${messagePayload.fileName || file.name}`,
+        type: messagePayload.type,
+        fileName: messagePayload.fileName || file.name,
+        fileSize: messagePayload.fileSize || file.size,
       };
 
       setMessages((prev) => [...prev, {
         id: tempId,
         tempId,
-        text: `Sent a file: ${data.fileName}` ,
+        text: messagePayload.ciphertext,
         sender: 'me',
-        fileUrl: data.downloadUrl,
-        fileName: data.fileName,
-        fileSize: data.fileSize,
-        type: 2,
+        fileName: messagePayload.fileName || file.name,
+        fileSize: messagePayload.fileSize || file.size,
+        type: messagePayload.type,
+        encrypted: true,
         status: isOnline && socket ? 'SENT' : 'QUEUED',
       }]);
 
       if (isOnline && socket) emitQueuedMessage(queued);
       else persistPendingQueue([...pendingQueueRef.current, queued]);
+      setComposeWarning(null);
     } catch (error) {
       console.error('Upload error:', error);
-      alert('Failed to upload file securely');
+      setComposeWarning('Failed to upload file securely');
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -1113,9 +1197,13 @@ function ChatDashboardContent() {
                         <p className="text-sm font-medium truncate">{msg.fileName}</p>
                         <p className="text-[10px] text-zinc-500">{msg.fileSize ? (msg.fileSize / 1024).toFixed(1) : 0} KB</p>
                       </div>
-                      <a href={msg.fileUrl} download={msg.fileName} className="p-2 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-400 hover:text-brand-gold">
+                      <button
+                        type="button"
+                        onClick={() => void handleSecureAttachmentDownload(msg)}
+                        className="p-2 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-400 hover:text-brand-gold"
+                      >
                         <Download className="w-5 h-5" />
-                      </a>
+                      </button>
                     </div>
                   ) : (
                     <p className="text-sm whitespace-pre-wrap break-words">{msg.text}</p>
@@ -1154,6 +1242,11 @@ function ChatDashboardContent() {
             <span>{isOnline ? 'Messages send immediately when connected.' : 'New messages are queued locally until you reconnect.'}</span>
             <span>{draftState === 'saving' ? 'Saving draft…' : draftState === 'saved' ? 'Draft saved' : draftState === 'error' ? 'Draft save failed' : ''}</span>
           </div>
+          {composeWarning && (
+            <div className="mb-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              {composeWarning}
+            </div>
+          )}
           <form onSubmit={sendMessage} className="flex gap-2">
             <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
             <button
@@ -1167,7 +1260,10 @@ function ChatDashboardContent() {
             <input
               type="text"
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value);
+                if (composeWarning) setComposeWarning(null);
+              }}
               dir={getTextDirection(input)}
               placeholder={sessionKey ? 'Type an encrypted message…' : 'Type a message…'}
               className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-3 md:px-4 py-2.5 md:py-3 text-sm focus:outline-none focus:border-brand-gold transition-colors"
