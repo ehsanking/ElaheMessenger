@@ -48,6 +48,7 @@ import {
 import { parseSecureAttachmentFromLegacyMessage } from '@/lib/e2ee-legacy-bridge';
 import { createSecureAttachmentMessage } from '@/lib/e2ee-chat-runtime';
 import { E2EE_UNAVAILABLE_WARNING, prepareDirectMessagePayload } from '@/app/chat/message-send-security';
+import { fetchWithCsrf, HttpAuthError } from '@/lib/http/fetchWithCsrf';
 
 // Import shared type definitions to replace use of `any`.
 import type { ChatUser, Report, AdminSettings, AuditLog, SocketMessagePayload, DeliveryState } from '@/lib/types';
@@ -184,6 +185,7 @@ function ChatDashboardContent() {
   const [isOnline, setIsOnline] = useState(true);
   const [draftState, setDraftState] = useState<DraftState>('idle');
   const [composeWarning, setComposeWarning] = useState<string | null>(null);
+  const [csrfToken, setCsrfToken] = useState<string | null>(null);
   // Mobile-specific state
   const [mobileTab, setMobileTab] = useState<MobileTab>('chats');
   const [mobileShowChat, setMobileShowChat] = useState(false);
@@ -269,6 +271,7 @@ function ChatDashboardContent() {
           router.push('/auth/login');
           return;
         }
+        setCsrfToken(typeof data.csrfToken === 'string' ? data.csrfToken : null);
         if (data.user.needsPasswordChange) {
           router.push('/auth/setup-admin');
           return;
@@ -403,9 +406,9 @@ function ChatDashboardContent() {
 
     const loadDraft = async () => {
       try {
-        const response = await fetch('/api/drafts', { cache: 'no-store' });
+        const response = await fetch('/api/drafts', { cache: 'no-store', credentials: 'include' });
         const data = await response.json();
-        const conversationDraft = data?.drafts?.find((draft: any) => draft.recipientId === selectedRecipient?.id || draft.groupId === selectedGroup?.id);
+        const conversationDraft = data?.drafts?.find((draft: { recipientId?: string; groupId?: string }) => draft.recipientId === selectedRecipient?.id || draft.groupId === selectedGroup?.id);
         const localDraft = storageKey ? localStorage.getItem(storageKey) : '';
         if (!cancelled) {
           setInput((conversationDraft?.clientDraft || localDraft || '').toString());
@@ -432,28 +435,31 @@ function ChatDashboardContent() {
         setDraftState(input.trim() ? 'saving' : 'idle');
         localStorage.setItem(storageKey, input);
         if (!input.trim()) {
-          await fetch('/api/drafts', {
+          await fetchWithCsrf('/api/drafts', {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ recipientId: selectedRecipient?.id, groupId: selectedGroup?.id }),
-          });
+          }, csrfToken);
           setDraftState('idle');
           return;
         }
 
-        await fetch('/api/drafts', {
+        await fetchWithCsrf('/api/drafts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ recipientId: selectedRecipient?.id, groupId: selectedGroup?.id, clientDraft: input }),
-        });
+        }, csrfToken);
         setDraftState('saved');
-      } catch {
+      } catch (error) {
+        if (error instanceof HttpAuthError && error.status === 403) {
+          setComposeWarning('Session expired or security token missing. Refresh and try again.');
+        }
         setDraftState('error');
       }
     }, 500);
 
     return () => clearTimeout(timeout);
-  }, [currentConversationId, currentUser?.id, input, selectedGroup?.id, selectedRecipient?.id]);
+  }, [csrfToken, currentConversationId, currentUser?.id, input, selectedGroup?.id, selectedRecipient?.id]);
 
   // Load message history when recipient changes
   useEffect(() => {
@@ -743,11 +749,15 @@ function ChatDashboardContent() {
     if (currentConversationId) {
       const storageKey = buildDraftStorageKey(currentUser.id, selectedRecipient?.id, selectedGroup?.id);
       if (storageKey) localStorage.removeItem(storageKey);
-      fetch('/api/drafts', {
+      fetchWithCsrf('/api/drafts', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ recipientId: selectedRecipient?.id, groupId: selectedGroup?.id }),
-      }).catch(() => {});
+      }, csrfToken).catch((error) => {
+        if (error instanceof HttpAuthError && error.status === 403) {
+          setComposeWarning('Session expired or security token missing. Refresh and try again.');
+        }
+      });
       setDraftState('idle');
     }
   };
@@ -809,7 +819,9 @@ function ChatDashboardContent() {
     }
 
     setIsUploading(true);
-    const conversationId = buildConversationId(currentUser.id, selectedRecipient?.id, selectedGroup?.id);
+    const recipientId = selectedRecipient ? selectedRecipient.id : undefined;
+    const groupId: string | undefined = undefined;
+    const conversationId = buildConversationId(currentUser.id, recipientId, groupId);
 
     try {
       if (!sessionKey) {
@@ -847,8 +859,8 @@ function ChatDashboardContent() {
       const tempId = `${Date.now()}`;
       const queued: PendingQueueItem = {
         tempId,
-        recipientId: selectedRecipient?.id,
-        groupId: selectedGroup?.id,
+        recipientId,
+        groupId,
         ciphertext: messagePayload.ciphertext,
         nonce: messagePayload.nonce || '',
         plaintext: `Sent a file: ${messagePayload.fileName || file.name}`,
@@ -960,7 +972,7 @@ function ChatDashboardContent() {
   const handleLogout = async () => {
     // Clear session on the server and redirect to login
     try {
-      await fetch('/api/session', { method: 'DELETE', credentials: 'include' });
+      await fetchWithCsrf('/api/session', { method: 'DELETE' }, csrfToken);
     } catch {
       // ignore
     }
