@@ -4,9 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Shield, Loader2, AlertTriangle } from 'lucide-react';
 import { updateAdminCredentials } from '@/app/actions/auth';
-
-// Import shared type definition for the current user to avoid `any`.
-import type { ChatUser } from '@/lib/types';
+import { useSession } from '@/hooks/useSession';
 
 export default function SetupAdminPage() {
   const [newUsername, setNewUsername] = useState('');
@@ -14,35 +12,19 @@ export default function SetupAdminPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [currentUser, setCurrentUser] = useState<ChatUser | null>(null);
+  const { user: currentUser, isLoading: isLoadingSession, logout } = useSession();
   const router = useRouter();
 
   useEffect(() => {
-    const init = async () => {
-      try {
-        const res = await fetch('/api/session', { credentials: 'include', cache: 'no-store' });
-        if (!res.ok) {
-          router.push('/auth/login');
-          return;
-        }
-        const data = await res.json();
-        if (!data.authenticated || !data.user) {
-          router.push('/auth/login');
-          return;
-        }
-        // If user does not need password change, redirect to chat
-        if (!data.user.needsPasswordChange) {
-          router.push('/chat');
-          return;
-        }
-        setCurrentUser(data.user);
-      } catch (err) {
-        console.error('Failed to initialize admin setup session:', err);
-        router.push('/auth/login');
-      }
-    };
-    init();
-  }, [router]);
+    if (isLoadingSession) return;
+    if (!currentUser) {
+      router.push('/auth/login');
+      return;
+    }
+    if (!currentUser.needsPasswordChange) {
+      router.push('/chat');
+    }
+  }, [currentUser, isLoadingSession, router]);
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,14 +48,15 @@ export default function SetupAdminPage() {
       if (result.error) {
         setError(result.error);
       } else {
-        // Logout and redirect to login
+        let logoutFailureMessage = '';
         try {
-          await fetch('/api/session', { method: 'DELETE', credentials: 'include' });
-        } catch {
-          // ignore
+          await logout();
+        } catch (logoutError) {
+          console.error('Logout after credential update failed:', logoutError);
+          logoutFailureMessage = ' Automatic logout failed, but your credentials were updated.';
         }
-        alert('Credentials updated successfully. Please login with your new credentials.');
-        router.push('/auth/login');
+        alert(`Credentials updated successfully.${logoutFailureMessage} Please login with your new credentials.`);
+        window.location.assign('/auth/login');
       }
     } catch (err) {
       console.error(err);
@@ -83,7 +66,7 @@ export default function SetupAdminPage() {
     }
   };
 
-  if (!currentUser) return null;
+  if (isLoadingSession || !currentUser) return null;
 
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
