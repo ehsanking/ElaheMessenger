@@ -212,6 +212,7 @@ Environment loading policy:
 | `POSTGRES_DB` | `elahe` | PostgreSQL database name |
 | `APP_DB_USER` | *(none)* | Least-privilege runtime DB user for the app |
 | `APP_DB_PASSWORD` | *(none)* | Least-privilege runtime DB password |
+| `MIGRATION_DATABASE_URL` | *(none)* | PostgreSQL URL for migration/provisioning role (recommended: bootstrap role) |
 | `APP_URL` | `http://localhost:3000` | Public base URL of the application |
 | `NODE_ENV` | `development` | Set to `production` for production builds |
 | `PORT` | `3000` | HTTP server port |
@@ -221,7 +222,10 @@ Environment loading policy:
 | Variable | Description |
 |---|---|
 | `JWT_SECRET` | HMAC-SHA256 signing secret for session tokens (≥ 32 chars) |
+| `SESSION_SECRET` | Dedicated session-cookie signing secret (≥ 32 chars, no cross-domain reuse) |
 | `ENCRYPTION_KEY` | AES encryption key for sensitive fields |
+| `DOWNLOAD_TOKEN_SECRET` | Attachment/token signing secret (independent from session secret) |
+| `LOCAL_CAPTCHA_SECRET` | HMAC key for local captcha challenge signing in production |
 | `ADMIN_USERNAME` | Initial admin username (required; no default) |
 | `ADMIN_PASSWORD` | Initial admin password — **change immediately after first login** |
 
@@ -297,8 +301,9 @@ Container names and services:
 
 - `POSTGRES_USER` / `POSTGRES_PASSWORD`: bootstrap/admin database role used for first-time PostgreSQL provisioning.
 - `APP_DB_USER` / `APP_DB_PASSWORD`: runtime least-privilege role used by Prisma/app in `DATABASE_URL`.
+- `MIGRATION_DATABASE_URL`: role used for schema migrations (`prisma migrate deploy`); should remain bootstrap/provisioning-scoped.
 - `DATABASE_URL` should point to `APP_DB_USER`, not the bootstrap account.
-- Installer provisions and grants runtime role permissions required for Prisma migrations (`migrate deploy`) without granting superuser-like privileges.
+- Runtime role grants are intentionally limited to application DML/sequence/function access; schema-changing privileges stay in the migration/bootstrap role.
 - Treat both bootstrap and runtime DB secrets as sensitive; rotate and store with least access (prefer secret manager or Docker secrets over plaintext files where possible).
 - `SESSION_SECRET` is a dedicated session-signing secret and must not be reused as a fallback for unrelated security domains.
 

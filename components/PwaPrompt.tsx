@@ -22,10 +22,11 @@ export default function PwaPrompt() {
   const [isIosSafari, setIsIosSafari] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
 
-  const routeContext = useMemo<'marketing' | 'auth' | 'chat'>(() => {
+  const routeContext = useMemo<'marketing' | 'auth' | 'chat' | 'other'>(() => {
     if (pathname.startsWith('/auth/')) return 'auth';
     if (pathname.startsWith('/chat')) return 'chat';
-    return 'marketing';
+    if (pathname === '/') return 'marketing';
+    return 'other';
   }, [pathname]);
 
   useEffect(() => {
@@ -40,16 +41,22 @@ export default function PwaPrompt() {
       setDeferredPrompt(event as InstallPromptEvent);
       setShowInstall(true);
     };
+    const onInstalled = () => {
+      setDeferredPrompt(null);
+      setShowInstall(false);
+    };
 
     window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt);
+    window.addEventListener('appinstalled', onInstalled);
 
     return () => {
       window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', onInstalled);
     };
   }, []);
 
   useEffect(() => {
-    if (isStandalone || routeContext === 'chat') {
+    if (isStandalone || routeContext === 'chat' || routeContext === 'other') {
       setShowInstall(false);
       return;
     }
@@ -111,7 +118,7 @@ export default function PwaPrompt() {
             <div className="flex-1">
               <h4 className="text-base font-bold text-zinc-50">Install Elahe Messenger</h4>
               <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
-                Add Elahe Messenger to your home screen for a faster, app-like experience.
+                Install Elahe Messenger for a faster, secure app-like experience.
               </p>
             </div>
             <button onClick={() => setShowInstall(false)} className="text-zinc-500 hover:text-zinc-300 transition-colors">

@@ -853,15 +853,21 @@ configure_runtime_env() {
   app_db_pass="$(env_get APP_DB_PASSWORD)"
   app_db_sslmode="$(env_get APP_DB_SSLMODE)"
   env_set_if_missing "DATABASE_URL" "postgresql://${app_db_user}:${app_db_pass}@db:5432/${pg_db}?schema=public&sslmode=${app_db_sslmode}"
+  env_set_if_missing "MIGRATION_DATABASE_URL" "postgresql://${pg_user}:${pg_pass}@db:5432/${pg_db}?schema=public&sslmode=${app_db_sslmode}"
 
   # Upgrade hardening: stop using bootstrap/superuser-style DB role for runtime app DATABASE_URL.
-  local existing_database_url bootstrap_db_prefix app_db_prefix
+  local existing_database_url existing_migration_database_url bootstrap_db_prefix app_db_prefix
   existing_database_url="$(env_get DATABASE_URL)"
+  existing_migration_database_url="$(env_get MIGRATION_DATABASE_URL)"
   bootstrap_db_prefix="postgresql://${pg_user}:${pg_pass}@db:5432/${pg_db}"
   app_db_prefix="postgresql://${app_db_user}:${app_db_pass}@db:5432/${pg_db}"
   if [[ "$existing_database_url" == "${bootstrap_db_prefix}"* ]]; then
     env_set_explicit "DATABASE_URL" "${existing_database_url/$bootstrap_db_prefix/$app_db_prefix}"
     log_warn "DATABASE_URL was upgraded from bootstrap DB role to least-privilege runtime role."
+  fi
+  if [ -n "$existing_migration_database_url" ] && [[ "$existing_migration_database_url" == "${app_db_prefix}"* ]]; then
+    env_set_explicit "MIGRATION_DATABASE_URL" "${existing_migration_database_url/$app_db_prefix/$bootstrap_db_prefix}"
+    log_warn "MIGRATION_DATABASE_URL was upgraded to use the bootstrap provisioning role."
   fi
 
   env_set_if_missing "PRISMA_CONNECTION_LIMIT" "10"
@@ -968,11 +974,11 @@ END
 \$\$;
 GRANT CONNECT, TEMP ON DATABASE "${db_name}" TO "${app_db_user}";
 \c "${db_name}"
-GRANT USAGE, CREATE ON SCHEMA public TO "${app_db_user}";
-GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA public TO "${app_db_user}";
+GRANT USAGE ON SCHEMA public TO "${app_db_user}";
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO "${app_db_user}";
 GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO "${app_db_user}";
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO "${app_db_user}";
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLES TO "${app_db_user}";
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "${app_db_user}";
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO "${app_db_user}";
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO "${app_db_user}";
 EOSQL
