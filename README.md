@@ -68,22 +68,56 @@
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                     Browser (Client)                    │
-│  Next.js 15 (App Router) · React 19 · Tailwind CSS 4   │
-│  Web Crypto API · Socket.IO Client · IndexedDB (E2EE)   │
-└──────────────────────┬──────────────────────────────────┘
-                       │ HTTPS / WSS
-┌──────────────────────▼──────────────────────────────────┐
-│                  Node.js Server (server.ts)              │
-│  Next.js Request Handler · Socket.IO · Background Queue  │
-└──────┬──────────────────────────────────────┬───────────┘
-       │                                      │
-┌──────▼──────┐                    ┌──────────▼──────────┐
-│  PostgreSQL  │                    │  Redis (optional)   │
-│  via Prisma  │                    │  Pub/Sub · Queue    │
-└─────────────┘                    └─────────────────────┘
+```mermaid
+flowchart TB
+  subgraph Client[Browser Client]
+    UI[Next.js UI (ChatDashboardClient)]
+    SW[Service Worker / Web Push (optional)]
+    IDB[IndexedDB: E2EE keys]
+    LS[localStorage: drafts + offline queue]
+  end
+
+  subgraph App[App Container]
+    NS[Next.js App Router + Route Handlers]
+    CS[Custom Node Server (server.ts)]
+    IO[Socket.IO Server]
+    BJ[Background Job Worker]
+    SEC[Session + CSRF + Origin checks]
+    ATT[Secure Attachments Pipeline]
+  end
+
+  subgraph Data[Data Stores]
+    PG[(PostgreSQL via Prisma)]
+    FS[(Local Object Storage)]
+    RD[(Redis optional)]
+  end
+
+  subgraph Edge[Ingress]
+    Caddy[Caddy Reverse Proxy]
+  end
+
+  UI -->|HTTPS| Caddy --> CS
+  CS --> NS
+  CS --> IO
+  UI -->|WebSocket| IO
+
+  NS --> SEC
+  IO --> SEC
+
+  NS --> PG
+  IO --> PG
+  BJ --> PG
+
+  ATT --> FS
+  ATT --> PG
+
+  IO -. optional adapter .-> RD
+  BJ -. optional distributed queue .-> RD
+  SEC -. optional distributed rate-limit .-> RD
+
+  UI --> IDB
+  UI --> LS
+  SW -. optional .-> UI
 ```
 
 **Key design principles:**
