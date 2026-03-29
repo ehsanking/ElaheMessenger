@@ -4,8 +4,12 @@ const CAPTCHA_VERSION = 'v2';
 const CAPTCHA_TTL_MS = 5 * 60 * 1000;
 
 const getSecret = () => {
-  const secret = process.env.LOCAL_CAPTCHA_SECRET || process.env.NEXTAUTH_SECRET || process.env.SESSION_SECRET;
-  return secret && secret.trim().length > 0 ? secret : 'local-captcha-dev-secret';
+  const secret = process.env.LOCAL_CAPTCHA_SECRET || process.env.NEXTAUTH_SECRET;
+  if (secret && secret.trim().length > 0) return secret;
+  if ((process.env.APP_ENV || process.env.NODE_ENV) === 'production') {
+    throw new Error('LOCAL_CAPTCHA_SECRET (or NEXTAUTH_SECRET) is required in production when local captcha is used.');
+  }
+  return 'local-captcha-dev-secret';
 };
 
 const signPayload = (payload: string) => crypto

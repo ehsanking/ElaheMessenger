@@ -20,7 +20,9 @@ fi
 
 [ -z "$PRISMA_BIN" ] && fail "Prisma CLI not found."
 
-$PRISMA_BIN migrate deploy --schema=./prisma/schema.prisma || fail "Prisma migrations failed."
+MIGRATE_DATABASE_URL="${MIGRATION_DATABASE_URL:-${DATABASE_URL:-}}"
+[ -z "$MIGRATE_DATABASE_URL" ] && fail "DATABASE_URL (or MIGRATION_DATABASE_URL) is required."
+DATABASE_URL="$MIGRATE_DATABASE_URL" $PRISMA_BIN migrate deploy --schema=./prisma/schema.prisma || fail "Prisma migrations failed."
 
 if [ -f server.ts ]; then
   if [ -x node_modules/.bin/tsx ]; then

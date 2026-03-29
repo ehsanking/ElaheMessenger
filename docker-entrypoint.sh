@@ -93,6 +93,19 @@ run_prisma() {
   fi
 }
 
+run_prisma_migrations() {
+  _target_db_url="${MIGRATION_DATABASE_URL:-${DATABASE_URL:-}}"
+  [ -z "$_target_db_url" ] && fail "DATABASE_URL (or MIGRATION_DATABASE_URL) is required."
+
+  if [ "${MIGRATION_DATABASE_URL:-}" ]; then
+    log "Running Prisma migrations with MIGRATION_DATABASE_URL (provisioning role)."
+  else
+    warn "MIGRATION_DATABASE_URL is not set; falling back to DATABASE_URL for migrations."
+  fi
+
+  DATABASE_URL="$_target_db_url" run_prisma migrate deploy --schema=./prisma/schema.prisma
+}
+
 # ── Strict production secret validation (POSIX-compatible) ──
 require_strong_value() {
   _var_name="$1"
@@ -172,7 +185,7 @@ if [ -z "$PRISMA_BIN" ]; then
 fi
 
 log "Running Prisma database migrations (migrate deploy)..."
-if ! run_prisma migrate deploy --schema=./prisma/schema.prisma 2>&1; then
+if ! run_prisma_migrations 2>&1; then
   warn "prisma migrate deploy failed. Refusing schema sync fallback in production."
   warn "Verify DATABASE_URL connectivity, migration history consistency, and Prisma schema compatibility."
   exit 1
