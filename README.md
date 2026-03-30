@@ -343,6 +343,7 @@ docker compose -f docker-compose.yml -f compose.prod.yaml --env-file .env.produc
 ```
 
 `compose.prod.yaml` is an override file for `docker-compose.yml` (not a standalone compose file).
+`--env-file .env.production` is required so Compose can interpolate `${VAR}` values in the compose model (while `env_file:` only affects container runtime environment).
 
 > Security note: define production credentials explicitly via `.env.production` (or Docker secrets) before startup.
 
