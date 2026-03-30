@@ -1,5 +1,9 @@
 #!/bin/bash
-# Elahe Messenger Installer v1.0 (hotfix)
+# LEGACY INSTALLER (DEPRECATED)
+# This script is retained for historical reference only.
+# Use the hardened installer instead:
+#   curl -fsSL https://raw.githubusercontent.com/ehsanking/ElaheMessenger/main/install.sh | ( [ "$(id -u)" -eq 0 ] && bash || sudo bash )
+# See docs/installer-verification-checklist.md for the supported workflow.
 # Aligns deployment with the current docker-compose.yml and production env validation.
 set -euo pipefail
 
