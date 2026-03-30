@@ -53,7 +53,11 @@ on_error() {
 
 require_root() {
   if [ "${EUID:-$(id -u)}" -ne 0 ]; then
-    log_error "Installer must run as root. Re-run with: sudo bash install.sh"
+    if command_exists sudo && [ -t 0 ] && [ -f "${BASH_SOURCE[0]:-}" ]; then
+      log_info "Root privileges are required. Re-running installer with sudo..."
+      exec sudo -E bash "${BASH_SOURCE[0]}" "$@"
+    fi
+    log_error "Installer must run as root. Re-run with: curl -fsSL https://raw.githubusercontent.com/ehsanking/ElaheMessenger/main/install.sh | ( [ \"\$(id -u)\" -eq 0 ] && bash || sudo bash )"
     exit 1
   fi
 }
@@ -383,12 +387,31 @@ install_docker_apt() {
 
   log_info "Installing Docker from distro packages (no curl|sh)."
   apt-get update -qq
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker.io docker-compose-plugin
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker.io
 
   if ! command_exists docker; then
     log_error "Docker installation failed."
     exit 1
   fi
+}
+
+install_docker_compose_plugin_apt() {
+  if ! command_exists apt-get; then
+    return 1
+  fi
+
+  local candidates=("docker-compose-plugin" "docker-compose-v2")
+  local pkg
+  for pkg in "${candidates[@]}"; do
+    if ! apt-cache show "$pkg" >/dev/null 2>&1; then
+      continue
+    fi
+    if DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$pkg"; then
+      return 0
+    fi
+  done
+
+  return 1
 }
 
 ensure_docker_ready() {
@@ -443,11 +466,14 @@ check_dependencies() {
   if ! docker compose version >/dev/null 2>&1; then
     if command_exists apt-get; then
       apt-get update -qq
-      DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker-compose-plugin
     fi
+    install_docker_compose_plugin_apt || true
   fi
 
-  docker compose version >/dev/null 2>&1 || { log_error "docker compose not available."; exit 1; }
+  docker compose version >/dev/null 2>&1 || {
+    log_error "docker compose not available. Install package 'docker-compose-plugin' or 'docker-compose-v2' and re-run installer."
+    exit 1
+  }
 }
 
 collect_domain_ssl_input() {
@@ -1201,7 +1227,7 @@ main() {
     exit 1
   fi
 
-  require_root
+  require_root "$@"
   choose_install_mode
   preflight_checks
   check_dependencies
