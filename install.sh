@@ -48,6 +48,7 @@ log_step() { echo -e "\n${PURPLE}=== $1 ===${NC}"; }
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
 compose_project_name() {
+  # Avoid `tr -c` here: it can transform trailing newline into `_` and break volume name lookup.
   basename "$TARGET_DIR" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g'
 }
 
