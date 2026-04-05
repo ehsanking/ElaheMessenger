@@ -24,6 +24,17 @@ const getDefaultMax = () => {
   return Number.isFinite(value) && value > 0 ? value : 100;
 };
 
+const getFailClosedPrefixes = () =>
+  (process.env.RATE_LIMIT_FAIL_CLOSED_PREFIXES ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+const shouldFailClosedOnRedisError = (key: string) => {
+  const prefixes = getFailClosedPrefixes();
+  return prefixes.some((prefix) => key.startsWith(prefix));
+};
+
 export type RateLimitResult = {
   allowed: boolean;
   remaining: number;
@@ -70,6 +81,10 @@ export async function rateLimit(key: string, options: RateLimitOptions = {}): Pr
       logger.error('Rate limiting with Redis failed', {
         error: error instanceof Error ? error.message : String(error),
       });
+      if (shouldFailClosedOnRedisError(key)) {
+        incrementMetric('rate_limit_blocked', 1, { store: 'redis_error', mode: 'fail_closed' });
+        return { allowed: false, remaining: 0, resetAt: now + windowMs };
+      }
       // Continue to fallback
     }
   }

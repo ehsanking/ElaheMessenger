@@ -1,5 +1,36 @@
 const isProduction = process.env.NODE_ENV === 'production';
 
+const toOrigin = (value: string) => {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+};
+
+const buildConnectSrc = () => {
+  if (!isProduction) return "'self' ws: wss: https:";
+
+  const configuredOrigins = new Set<string>(["'self'"]);
+  const appOrigin = process.env.APP_URL ? toOrigin(process.env.APP_URL) : null;
+  if (appOrigin) configuredOrigins.add(appOrigin);
+
+  if (process.env.ALLOWED_ORIGINS) {
+    for (const value of process.env.ALLOWED_ORIGINS.split(',').map((item) => item.trim()).filter(Boolean)) {
+      const origin = toOrigin(value);
+      if (origin) configuredOrigins.add(origin);
+    }
+  }
+
+  if (process.env.CSP_CONNECT_SRC_EXTRA) {
+    for (const value of process.env.CSP_CONNECT_SRC_EXTRA.split(',').map((item) => item.trim()).filter(Boolean)) {
+      configuredOrigins.add(value);
+    }
+  }
+
+  return Array.from(configuredOrigins).join(' ');
+};
+
 const buildContentSecurityPolicy = () => {
   const scriptSrc = ["'self'", ...(isProduction ? [] : ["'unsafe-inline'", "'unsafe-eval'"])]
     .filter(Boolean)
@@ -15,7 +46,7 @@ const buildContentSecurityPolicy = () => {
     "font-src 'self' data:",
     "style-src 'self' 'unsafe-inline'",
     `script-src ${scriptSrc}`,
-    "connect-src 'self' ws: wss: https:",
+    `connect-src ${buildConnectSrc()}`,
     "worker-src 'self' blob:",
     "media-src 'self' blob:",
     'upgrade-insecure-requests',
@@ -30,6 +61,7 @@ export const SECURITY_HEADERS: Record<string, string> = {
   'Cross-Origin-Opener-Policy': 'same-origin',
   'Cross-Origin-Resource-Policy': 'same-origin',
   'Cross-Origin-Embedder-Policy': 'credentialless',
+  ...(isProduction ? { 'Strict-Transport-Security': 'max-age=31536000; includeSubDomains' } : {}),
   'Content-Security-Policy': buildContentSecurityPolicy(),
 };
 
