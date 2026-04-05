@@ -22,6 +22,53 @@ function parseComposeServices(composeText) {
   return services;
 }
 
+function parseServiceEnvironment(composeText, serviceName) {
+  const lines = composeText.split(/\r?\n/);
+  let inService = false;
+  let serviceIndent = 0;
+  let inEnvironment = false;
+  let envIndent = 0;
+  const envKeys = new Set();
+
+  for (const line of lines) {
+    const indent = (line.match(/^\s*/) || [""])[0].length;
+
+    if (!inService) {
+      if (new RegExp(`^\\s{2}${serviceName}:\\s*$`).test(line)) {
+        inService = true;
+        serviceIndent = indent;
+      }
+      continue;
+    }
+
+    if (indent <= serviceIndent && /^\s*[a-zA-Z0-9_-]+:\s*$/.test(line)) {
+      break;
+    }
+
+    if (!inEnvironment) {
+      if (/^\s+environment:\s*$/.test(line)) {
+        inEnvironment = true;
+        envIndent = indent;
+      }
+      continue;
+    }
+
+    if (indent <= envIndent) {
+      inEnvironment = false;
+      continue;
+    }
+
+    const envMatch = line.match(/^\s*-\s*([A-Z0-9_]+)=/);
+    if (envMatch) envKeys.add(envMatch[1]);
+  }
+
+  return envKeys;
+}
+
+function findMissingInstallerMentions(installerText, keys) {
+  return Array.from(keys).filter((key) => !installerText.includes(key));
+}
+
 export function run() {
   const result = createResult('compose-installer');
   const compose = readText('docker-compose.yml');
@@ -41,6 +88,29 @@ export function run() {
 
   if (!installer.includes('OBJECT_STORAGE_DRIVER=local')) {
     result.warnings.push('installer does not write an explicit local object storage driver to .env.');
+  }
+
+  const appEnv = parseServiceEnvironment(compose, 'app');
+  const dbEnv = parseServiceEnvironment(compose, 'db');
+
+  const criticalDbEnv = new Set([
+    'DATABASE_URL',
+    'MIGRATION_DATABASE_URL',
+    'POSTGRES_USER',
+    'POSTGRES_PASSWORD',
+    'POSTGRES_DB',
+    'APP_DB_USER',
+    'APP_DB_PASSWORD',
+  ]);
+
+  const missingComposeKeys = Array.from(criticalDbEnv).filter((key) => !appEnv.has(key) && !dbEnv.has(key));
+  if (missingComposeKeys.length > 0) {
+    result.errors.push(`docker-compose.yml is missing critical DB env keys: ${missingComposeKeys.join(', ')}`);
+  }
+
+  const missingInstallerKeys = findMissingInstallerMentions(installer, criticalDbEnv);
+  if (missingInstallerKeys.length > 0) {
+    result.errors.push(`install.sh does not provision or validate critical DB env keys: ${missingInstallerKeys.join(', ')}`);
   }
 
   return result;
