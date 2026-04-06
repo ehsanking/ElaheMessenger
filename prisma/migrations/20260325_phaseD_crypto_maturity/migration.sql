@@ -33,9 +33,18 @@ CREATE TABLE IF NOT EXISTS "OneTimePreKey" (
 );
 
 DO $$
+DECLARE
+  has_device_id BOOLEAN;
 BEGIN
   -- Legacy schema compatibility: initial migrations created OneTimePreKey without device lifecycle columns.
-  ALTER TABLE "OneTimePreKey" ADD COLUMN IF NOT EXISTS "deviceId" TEXT;
+  SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = current_schema()
+      AND table_name = 'OneTimePreKey'
+      AND column_name = 'deviceId'
+  ) INTO has_device_id;
+
   ALTER TABLE "OneTimePreKey" ADD COLUMN IF NOT EXISTS "signature" TEXT;
   ALTER TABLE "OneTimePreKey" ADD COLUMN IF NOT EXISTS "status" TEXT NOT NULL DEFAULT 'AVAILABLE';
   ALTER TABLE "OneTimePreKey" ADD COLUMN IF NOT EXISTS "reservedAt" TIMESTAMP;
@@ -43,6 +52,38 @@ BEGIN
   ALTER TABLE "OneTimePreKey" ADD COLUMN IF NOT EXISTS "expiresAt" TIMESTAMP;
   ALTER TABLE "OneTimePreKey" ADD COLUMN IF NOT EXISTS "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
   ALTER TABLE "OneTimePreKey" ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+  IF NOT has_device_id THEN
+    INSERT INTO "UserDevice" (
+      "id", "userId", "deviceId", "label", "identityKeyPublic", "signingPublicKey", "signedPreKey", "signedPreKeySig", "isPrimary", "isRevoked", "createdAt", "updatedAt"
+    )
+    SELECT
+      'legacy-device:' || u."id",
+      u."id",
+      'legacy-device',
+      'Legacy imported device',
+      COALESCE(NULLIF(u."identityKeyPublic", ''), 'legacy:' || u."id"),
+      COALESCE(NULLIF(u."signingPublicKey", ''), 'legacy:' || u."id"),
+      COALESCE(NULLIF(u."signedPreKey", ''), 'legacy:' || u."id"),
+      COALESCE(NULLIF(u."signedPreKeySig", ''), 'legacy:' || u."id"),
+      true,
+      false,
+      CURRENT_TIMESTAMP,
+      CURRENT_TIMESTAMP
+    FROM "User" u
+    WHERE EXISTS (
+      SELECT 1 FROM "OneTimePreKey" otp WHERE otp."userId" = u."id"
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM "UserDevice" ud WHERE ud."id" = 'legacy-device:' || u."id"
+    );
+
+    ALTER TABLE "OneTimePreKey" ADD COLUMN "deviceId" TEXT;
+
+    UPDATE "OneTimePreKey"
+    SET "deviceId" = 'legacy-device:' || "userId"
+    WHERE "deviceId" IS NULL;
+  END IF;
 
   IF EXISTS (
     SELECT 1
@@ -54,10 +95,6 @@ BEGIN
   ) THEN
     ALTER TABLE "OneTimePreKey" ALTER COLUMN "keyId" TYPE TEXT USING "keyId"::TEXT;
   END IF;
-
-  UPDATE "OneTimePreKey"
-  SET "deviceId" = COALESCE("deviceId", "id")
-  WHERE "deviceId" IS NULL;
 
   ALTER TABLE "OneTimePreKey" ALTER COLUMN "deviceId" SET NOT NULL;
 END $$;
