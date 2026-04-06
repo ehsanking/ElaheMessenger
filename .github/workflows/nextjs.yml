@@ -56,7 +56,9 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
         with:
-          enablement: true
+          # Avoid failing when the workflow token cannot create/enable Pages automatically.
+          # Repository admins can enable Pages once in repository settings.
+          enablement: false
           # Automatically inject basePath in your Next.js configuration file and disable
           # server side image optimization (https://nextjs.org/docs/api-reference/next/image#unoptimized).
           #
