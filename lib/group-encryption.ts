@@ -1,57 +1,36 @@
-// group-encryption.ts
-
-import { GroupKeyAgreement, GroupKeyAgreementTag } from 'mls-protocol';
+export type GroupKeyAgreementTag = {
+    ciphertext: string;
+    iv: string;
+    authTag: string;
+    version: number;
+};
 
 /**
- * This class implements group message encryption using TreeKEM
- * from the Messaging Layer Security protocol.
+ * Legacy compatibility shim for older imports.
+ *
+ * This module intentionally does not implement custom cryptography.
+ * E2EE cryptographic operations are handled by the dedicated runtime in `lib/e2ee-*`.
  */
 class GroupEncryption {
-    private groupKeyAgreement: GroupKeyAgreement;
-
-    constructor() {
-        this.groupKeyAgreement = new GroupKeyAgreement();
+    public initializeGroup(_participants: string[]): void {
+        void _participants;
+        throw new Error('GroupEncryption is deprecated. Use the E2EE runtime services instead.');
     }
 
-    /**
-     * Initializes the group with a list of participants.
-     * @param participants - An array of participant identifiers.
-     */
-    public initializeGroup(participants: string[]): void {
-        this.groupKeyAgreement.initialize(participants);
+    public encryptMessage(_message: string): GroupKeyAgreementTag {
+        void _message;
+        throw new Error('GroupEncryption is deprecated. Use the E2EE runtime services instead.');
     }
 
-    /**
-     * Encrypts a message for all participants in the group.
-     * @param message - The message to encrypt.
-     * @returns The encrypted message.
-     */
-    public encryptMessage(message: string): GroupKeyAgreementTag {
-        const encryptedMessage = this.groupKeyAgreement.encrypt(message);
-        return encryptedMessage;
+    public decryptMessage(_tag: GroupKeyAgreementTag): string {
+        void _tag;
+        throw new Error('GroupEncryption is deprecated. Use the E2EE runtime services instead.');
     }
 
-    /**
-     * Decrypts a message received from another group participant.
-     * @param tag - The encrypted message tag.
-     * @returns The decrypted message.
-     */
-    public decryptMessage(tag: GroupKeyAgreementTag): string {
-        const decryptedMessage = this.groupKeyAgreement.decrypt(tag);
-        return decryptedMessage;
-    }
-
-    /**
-     * Updates the group key agreement state if a participant joins or leaves.
-     * @param participant - Identifier of the participant.
-     * @param action - 'join' or 'leave'.
-     */
-    public updateGroup(participant: string, action: 'join' | 'leave'): void {
-        if (action === 'join') {
-            this.groupKeyAgreement.addParticipant(participant);
-        } else if (action === 'leave') {
-            this.groupKeyAgreement.removeParticipant(participant);
-        }
+    public updateGroup(_participant: string, _action: 'join' | 'leave'): void {
+        void _participant;
+        void _action;
+        throw new Error('GroupEncryption is deprecated. Use the E2EE runtime services instead.');
     }
 }
 
