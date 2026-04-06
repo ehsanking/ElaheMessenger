@@ -54,35 +54,11 @@ BEGIN
   ALTER TABLE "OneTimePreKey" ADD COLUMN IF NOT EXISTS "updatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
 
   IF NOT has_device_id THEN
-    INSERT INTO "UserDevice" (
-      "id", "userId", "deviceId", "label", "identityKeyPublic", "signingPublicKey", "signedPreKey", "signedPreKeySig", "isPrimary", "isRevoked", "createdAt", "updatedAt"
-    )
-    SELECT
-      'legacy-device:' || u."id",
-      u."id",
-      'legacy-device',
-      'Legacy imported device',
-      COALESCE(NULLIF(u."identityKeyPublic", ''), 'legacy:' || u."id"),
-      COALESCE(NULLIF(u."signingPublicKey", ''), 'legacy:' || u."id"),
-      COALESCE(NULLIF(u."signedPreKey", ''), 'legacy:' || u."id"),
-      COALESCE(NULLIF(u."signedPreKeySig", ''), 'legacy:' || u."id"),
-      true,
-      false,
-      CURRENT_TIMESTAMP,
-      CURRENT_TIMESTAMP
-    FROM "User" u
-    WHERE EXISTS (
-      SELECT 1 FROM "OneTimePreKey" otp WHERE otp."userId" = u."id"
-    )
-    AND NOT EXISTS (
-      SELECT 1 FROM "UserDevice" ud WHERE ud."id" = 'legacy-device:' || u."id"
-    );
+    -- Legacy rows are device-unaware and incompatible with phase-D device binding.
+    -- Drop them so clients can re-register fresh device-scoped prekeys.
+    DELETE FROM "OneTimePreKey";
 
     ALTER TABLE "OneTimePreKey" ADD COLUMN "deviceId" TEXT;
-
-    UPDATE "OneTimePreKey"
-    SET "deviceId" = 'legacy-device:' || "userId"
-    WHERE "deviceId" IS NULL;
   END IF;
 
   IF EXISTS (
@@ -96,6 +72,7 @@ BEGIN
     ALTER TABLE "OneTimePreKey" ALTER COLUMN "keyId" TYPE TEXT USING "keyId"::TEXT;
   END IF;
 
+  DELETE FROM "OneTimePreKey" WHERE "deviceId" IS NULL;
   ALTER TABLE "OneTimePreKey" ALTER COLUMN "deviceId" SET NOT NULL;
 END $$;
 
