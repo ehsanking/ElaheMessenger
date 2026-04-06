@@ -1396,7 +1396,29 @@ launch_services() {
   (
     cd "$TARGET_DIR"
     COMPOSE_BAKE=false docker compose build app
-    docker compose up -d app caddy
+  )
+
+  (
+    cd "$TARGET_DIR"
+    if ! docker compose up -d app; then
+      log_error "Failed to start app service."
+      print_failure_diagnostics
+      exit 1
+    fi
+  )
+
+  if ! wait_for_container_health "app" 300; then
+    print_failure_diagnostics
+    exit 1
+  fi
+
+  (
+    cd "$TARGET_DIR"
+    if ! docker compose up -d caddy; then
+      log_error "Failed to start caddy service."
+      print_failure_diagnostics
+      exit 1
+    fi
   )
 
   log_success "Compose services started."
