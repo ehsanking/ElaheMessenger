@@ -12,8 +12,11 @@ const getAdminBootstrapStateFile = () => {
   return path.join(absoluteStateDir, 'admin-bootstrap-reset-state');
 };
 
-const makeResetStateFingerprint = (username: string, password: string, forcePasswordChange: boolean) =>
-  createHash('sha256').update(`${username}\n${password}\n${forcePasswordChange ? 'force' : 'noforce'}`).digest('hex');
+const makeResetStateFingerprint = async (username: string, password: string, forcePasswordChange: boolean) => {
+  const input = `${username}\n${password}\n${forcePasswordChange ? 'force' : 'noforce'}`;
+  // Use Argon2 as a computationally expensive KDF to derive the fingerprint from the password.
+  return argon2.hash(input);
+};
 
 async function hasConsumedAdminReset(fingerprint: string) {
   const stateFile = getAdminBootstrapStateFile();
@@ -79,7 +82,7 @@ export async function initializeAdmin() {
     });
     const allowResetExisting = (process.env.ADMIN_BOOTSTRAP_RESET_EXISTING ?? 'false').toLowerCase() === 'true';
     const bootstrapForcePasswordChange = (process.env.ADMIN_BOOTSTRAP_FORCE_PASSWORD_CHANGE ?? 'true').toLowerCase() === 'true';
-    const resetStateFingerprint = makeResetStateFingerprint(adminUsername, adminPassword, bootstrapForcePasswordChange);
+    const resetStateFingerprint = await makeResetStateFingerprint(adminUsername, adminPassword, bootstrapForcePasswordChange);
     const resetAlreadyConsumed = allowResetExisting ? await hasConsumedAdminReset(resetStateFingerprint) : false;
 
     if (!adminExists) {
