@@ -11,6 +11,8 @@ describe('installer and compose production hardening', () => {
     expect(install).toContain('prompt_admin_credentials_fresh');
     expect(install).toContain('choose_source_ref');
     expect(install).toContain('provision_runtime_db_role');
+    expect(install).toContain('Failed to start app service.');
+    expect(install).toContain('docker compose up -d app;');
     expect(install).toContain('Installer running in non-interactive mode.');
     expect(install).toContain('INSTALL_NONINTERACTIVE');
     expect(install).toContain('Non-interactive mode refuses to continue with occupied ports.');
