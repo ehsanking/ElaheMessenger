@@ -99,3 +99,6 @@ jobs:
       uses: github/codeql-action/analyze@v4
       with:
         category: "/language:${{matrix.language}}"
+        # Keep this workflow as a local/manual validation path when
+        # repository-level Code Scanning default setup is enabled.
+        upload: false
