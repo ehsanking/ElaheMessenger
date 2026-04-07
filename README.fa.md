@@ -254,4 +254,3 @@ If this project helps you, you can support its maintenance:
 
 - **USDT (TRC20 / Tether):** `TKPswLQqd2e73UTGJ5prxVXBVo7MTsWedU`
 - **TRON (TRX):** `TKPswLQqd2e73UTGJ5prxVXBVo7MTsWedU`
-
