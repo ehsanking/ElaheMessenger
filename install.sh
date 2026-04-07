@@ -217,6 +217,12 @@ get_primary_ipv4() {
   printf '%s' "$server_ip"
 }
 
+get_primary_ipv6() {
+  local ipv6
+  ipv6=$(hostname -I 2>/dev/null | tr ' ' '\n' | awk '/:/{print}' | grep -Ev '^(fe80:|::1$)' | head -n 1 || true)
+  printf '%s' "$ipv6"
+}
+
 read_tty_input() {
   local prompt="$1"
   local default_value="${2:-}"
@@ -693,6 +699,17 @@ check_dependencies() {
 
 collect_domain_ssl_input() {
   log_step "Domain/IP configuration"
+  local detected_ipv4 detected_ipv6
+  detected_ipv4="$(get_primary_ipv4)"
+  detected_ipv6="$(get_primary_ipv6)"
+
+  log_info "Detected server IPv4: ${detected_ipv4}"
+  if [ -n "$detected_ipv6" ]; then
+    log_info "Detected server IPv6: ${detected_ipv6}"
+  else
+    log_info "Detected server IPv6: not found"
+  fi
+  log_info "If you use a domain, point DNS records to this server (A -> IPv4, AAAA -> IPv6 when available)."
 
   if [ "$NONINTERACTIVE" = true ]; then
     if is_true "${INSTALL_USE_DOMAIN:-false}"; then
@@ -1696,6 +1713,14 @@ print_summary() {
   if [ -n "$ADMIN_CREATED_FILE" ]; then
     echo "Bootstrap admin credentials saved to: $ADMIN_CREATED_FILE"
   fi
+  if [ "$INSTALL_MODE" = "fresh" ]; then
+    echo "Admin login username: ${ADMIN_USERNAME_VALUE}"
+    if [ "$ADMIN_AUTO_GENERATED" = true ]; then
+      echo "Admin login password: ${ADMIN_PASSWORD_VALUE}"
+    else
+      echo "Admin login password: (the password you entered during installation)"
+    fi
+  fi
   if [ "$INSTALL_MODE" = "upgrade" ]; then
     echo "Admin bootstrap env vars are create-only by default and do not overwrite an existing admin user."
     echo "To reset an existing admin via env, set ADMIN_BOOTSTRAP_RESET_EXISTING=true for a one-time reset."
@@ -1711,7 +1736,21 @@ print_summary() {
   elif [ "$USE_DOMAIN" = true ]; then
     echo "TLS mode: automatic certificate issuance/renewal via Caddy."
   fi
-  echo "No admin password was printed to terminal output."
+  if [ "$USE_DOMAIN" = true ]; then
+    local summary_ipv4 summary_ipv6
+    summary_ipv4="$(get_primary_ipv4)"
+    summary_ipv6="$(get_primary_ipv6)"
+    echo "Server IPv4: ${summary_ipv4}"
+    if [ -n "$summary_ipv6" ]; then
+      echo "Server IPv6: ${summary_ipv6}"
+    fi
+    echo "DNS guidance: set domain A record to IPv4 and AAAA record to IPv6 (if available)."
+  fi
+  if [ "$INSTALL_MODE" = "fresh" ] && [ "$ADMIN_AUTO_GENERATED" = true ]; then
+    echo "Admin password was printed above for initial login. Keep it secure and rotate after first login."
+  else
+    echo "No admin password was printed to terminal output."
+  fi
   if [ "$CADDY_RUNTIME_VALIDATED" = true ]; then
     echo "Caddy runtime config validated inside container."
   fi
