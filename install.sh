@@ -1705,6 +1705,16 @@ verify_post_launch_health() {
 
 print_summary() {
   log_step "Complete"
+  local summary_admin_username summary_admin_password summary_bootstrap_password_file
+  summary_admin_username="${ADMIN_USERNAME_VALUE:-$(env_get ADMIN_USERNAME)}"
+  summary_admin_password="${ADMIN_PASSWORD_VALUE:-}"
+  if [ -z "$summary_admin_password" ]; then
+    summary_bootstrap_password_file="$TARGET_DIR/runtime/admin-bootstrap-password"
+    if [ -f "$summary_bootstrap_password_file" ]; then
+      summary_admin_password="$(head -n 1 "$summary_bootstrap_password_file" | tr -d '\r')"
+    fi
+  fi
+
   echo "Mode: $INSTALL_MODE"
   echo "Source ref: ${INSTALL_REF_RESOLVED:-unknown} (${INSTALL_REF_TYPE:-unknown})"
   echo "App URL: ${RESOLVED_APP_URL}"
@@ -1713,13 +1723,13 @@ print_summary() {
   if [ -n "$ADMIN_CREATED_FILE" ]; then
     echo "Bootstrap admin credentials saved to: $ADMIN_CREATED_FILE"
   fi
-  if [ "$INSTALL_MODE" = "fresh" ]; then
-    echo "Admin login username: ${ADMIN_USERNAME_VALUE}"
-    if [ "$ADMIN_AUTO_GENERATED" = true ]; then
-      echo "Admin login password: ${ADMIN_PASSWORD_VALUE}"
-    else
-      echo "Admin login password: (the password you entered during installation)"
-    fi
+  if [ -n "$summary_admin_username" ]; then
+    echo "Admin login username: ${summary_admin_username}"
+  fi
+  if [ -n "$summary_admin_password" ]; then
+    echo "Admin login password: ${summary_admin_password}"
+  elif [ "$INSTALL_MODE" = "fresh" ] && [ "$ADMIN_AUTO_GENERATED" != true ]; then
+    echo "Admin login password: (the password you entered during installation)"
   fi
   if [ "$INSTALL_MODE" = "upgrade" ]; then
     echo "Admin bootstrap env vars are create-only by default and do not overwrite an existing admin user."
@@ -1746,7 +1756,7 @@ print_summary() {
     fi
     echo "DNS guidance: set domain A record to IPv4 and AAAA record to IPv6 (if available)."
   fi
-  if [ "$INSTALL_MODE" = "fresh" ] && [ "$ADMIN_AUTO_GENERATED" = true ]; then
+  if [ -n "$summary_admin_password" ]; then
     echo "Admin password was printed above for initial login. Keep it secure and rotate after first login."
   else
     echo "No admin password was printed to terminal output."
