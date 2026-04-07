@@ -25,6 +25,7 @@ INSTALL_NONINTERACTIVE="${INSTALL_NONINTERACTIVE:-}"
 NONINTERACTIVE=false
 USE_DOMAIN=false
 DOMAIN_NAME=""
+PUBLIC_IP=""
 SSL_EMAIL=""
 USE_CUSTOM_SSL_CERT=false
 CUSTOM_SSL_CERT_SOURCE=""
@@ -215,6 +216,12 @@ get_primary_ipv4() {
   server_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
   [ -z "$server_ip" ] && server_ip="127.0.0.1"
   printf '%s' "$server_ip"
+}
+
+is_valid_ipv4() {
+  local ip="$1"
+  [[ "$ip" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
+  awk -F'.' '{ for (i=1; i<=4; i++) if ($i < 0 || $i > 255) exit 1 }' <<<"$ip"
 }
 
 get_primary_ipv6() {
@@ -745,6 +752,11 @@ collect_domain_ssl_input() {
       USE_DOMAIN=true
       return
     fi
+    PUBLIC_IP="${INSTALL_PUBLIC_IP:-$(get_primary_ipv4)}"
+    if ! is_valid_ipv4 "$PUBLIC_IP"; then
+      log_error "INSTALL_PUBLIC_IP must be a valid IPv4 address in non-interactive mode."
+      exit 1
+    fi
     USE_DOMAIN=false
     return
   fi
@@ -754,7 +766,13 @@ collect_domain_ssl_input() {
   echo "  2) IP-only (Caddy HTTP on :80)"
 
   local choice
-  choice=$(read_tty_input "${YELLOW}Enter choice [1-2]:${NC} " "2")
+  while true; do
+    choice=$(read_tty_input "${YELLOW}Enter choice [1-2]:${NC} " "")
+    case "$choice" in
+      1|2) break ;;
+      *) log_warn "Please enter 1 (Domain) or 2 (IP-only)." ;;
+    esac
+  done
 
   if [ "$choice" = "1" ]; then
     DOMAIN_NAME=$(read_tty_input "${CYAN}Domain (example: chat.example.com):${NC} " "")
@@ -793,6 +811,13 @@ collect_domain_ssl_input() {
     esac
     USE_DOMAIN=true
   else
+    while true; do
+      PUBLIC_IP=$(read_tty_input "${CYAN}Public IPv4 for APP_URL (required, detected: ${detected_ipv4}):${NC} " "")
+      if is_valid_ipv4 "$PUBLIC_IP"; then
+        break
+      fi
+      log_warn "A valid IPv4 address is required to continue."
+    done
     USE_DOMAIN=false
   fi
 }
@@ -994,7 +1019,7 @@ EOC
     encode gzip zstd
 }
 EOC
-    RESOLVED_APP_URL="http://$(get_primary_ipv4)"
+    RESOLVED_APP_URL="http://${PUBLIC_IP:-$(get_primary_ipv4)}"
   fi
 }
 
@@ -1042,6 +1067,35 @@ infer_origin_from_caddyfile() {
   fi
 
   return 1
+}
+
+sync_preserved_proxy_context() {
+  [ "$INSTALL_MODE" = "upgrade" ] || return 0
+  [ "$PROXY_CONFIG_ACTION" = "preserve" ] || return 0
+
+  local app_url host
+  app_url="$(trim_space "$(env_get APP_URL)")"
+  if [ -z "$app_url" ]; then
+    app_url="$(infer_origin_from_caddyfile "$TARGET_DIR/Caddyfile" || true)"
+  fi
+  [ -n "$app_url" ] || return 0
+
+  RESOLVED_APP_URL="$app_url"
+  host="${app_url#http://}"
+  host="${host#https://}"
+  host="${host%%/*}"
+  host="${host%%:*}"
+
+  if [[ "$host" =~ ^([a-z0-9-]+\.)+[a-z]{2,}$ ]]; then
+    USE_DOMAIN=true
+    DOMAIN_NAME="$host"
+    return 0
+  fi
+
+  if is_valid_ipv4 "$host"; then
+    USE_DOMAIN=false
+    PUBLIC_IP="$host"
+  fi
 }
 
 stop_existing_stack_if_needed() {
@@ -1306,7 +1360,7 @@ configure_runtime_env() {
     fi
   else
     local ip_origin
-    ip_origin="http://$(get_primary_ipv4)"
+    ip_origin="http://${PUBLIC_IP:-$(get_primary_ipv4)}"
 
     env_set_if_missing "APP_URL" "$ip_origin"
     env_set_if_missing "ALLOWED_ORIGINS" "$ip_origin,http://localhost:3000,http://127.0.0.1:3000"
@@ -1656,15 +1710,27 @@ verify_post_launch_health() {
   fi
 
   if [ "$USE_DOMAIN" = true ]; then
-    local http_status
+    local http_status https_status
     http_status="$(curl -sS --max-time 8 --resolve "${DOMAIN_NAME}:80:127.0.0.1" -o /dev/null -w '%{http_code}' "http://${DOMAIN_NAME}/api/health/live" || true)"
     case "$http_status" in
       200|301|302|307|308)
-        LOCAL_PROXY_HEALTH_VALIDATED=true
         log_success "Local Caddy domain routing probe passed via Host=${DOMAIN_NAME} (HTTP status ${http_status})."
         ;;
       *)
         log_error "Local Caddy domain routing probe failed for host ${DOMAIN_NAME} (status: ${http_status:-none})."
+        print_failure_diagnostics
+        exit 1
+        ;;
+    esac
+    https_status="$(curl -sS --max-time 12 --resolve "${DOMAIN_NAME}:443:127.0.0.1" -o /dev/null -w '%{http_code}' "https://${DOMAIN_NAME}/api/health/live" || true)"
+    case "$https_status" in
+      200|301|302|307|308)
+        LOCAL_PROXY_HEALTH_VALIDATED=true
+        log_success "Local Caddy TLS probe passed via Host=${DOMAIN_NAME} (HTTPS status ${https_status})."
+        ;;
+      *)
+        log_error "Local Caddy TLS probe failed for host ${DOMAIN_NAME} (status: ${https_status:-none})."
+        log_error "Check DNS A/AAAA records for ${DOMAIN_NAME}, then inspect Caddy logs for ACME/TLS issues."
         print_failure_diagnostics
         exit 1
         ;;
@@ -1810,6 +1876,7 @@ main() {
   persist_custom_ssl_certificates
   configure_caddyfile
   configure_runtime_env
+  sync_preserved_proxy_context
   configure_npmrc
   validate_caddy_config
   launch_services
