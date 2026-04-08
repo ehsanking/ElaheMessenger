@@ -10,9 +10,59 @@ type RateLimitOptions = {
 
 import { logger } from '@/lib/logger';
 import { getRedisClient } from '@/lib/redis-client';
-import { incrementMetric } from '@/lib/observability';
+import { incrementMetric, setGauge } from '@/lib/observability';
+
+/**
+ * In-memory rate limit store with automatic cleanup.
+ *
+ * Fixes: Memory leak caused by expired entries never being removed.
+ * - Periodic cleanup runs every 60 seconds to prune expired entries.
+ * - Hard cap (MAX_STORE_SIZE) prevents unbounded memory growth even
+ *   under high cardinality (many unique IPs).
+ */
+const MAX_STORE_SIZE = Number(process.env.RATE_LIMIT_MAX_STORE_SIZE) || 50_000;
+const CLEANUP_INTERVAL_MS = 60_000;
 
 const store = new Map<string, RateLimitEntry>();
+
+const pruneExpiredEntries = () => {
+  const now = Date.now();
+  let pruned = 0;
+  for (const [key, entry] of store) {
+    if (entry.resetAt <= now) {
+      store.delete(key);
+      pruned++;
+    }
+  }
+  if (pruned > 0) {
+    logger.debug('Rate limit store pruned expired entries', { pruned, remaining: store.size });
+  }
+  setGauge('rate_limit_store_size', store.size);
+};
+
+const evictOldestIfNeeded = () => {
+  if (store.size <= MAX_STORE_SIZE) return;
+  // Evict oldest entries (first inserted) until we're under the cap
+  const toEvict = store.size - MAX_STORE_SIZE;
+  let evicted = 0;
+  for (const key of store.keys()) {
+    if (evicted >= toEvict) break;
+    store.delete(key);
+    evicted++;
+  }
+  incrementMetric('rate_limit_evictions', evicted);
+};
+
+// Start cleanup timer
+let cleanupTimer: ReturnType<typeof setInterval> | null = null;
+
+const ensureCleanupTimer = () => {
+  if (cleanupTimer) return;
+  cleanupTimer = setInterval(pruneExpiredEntries, CLEANUP_INTERVAL_MS);
+  if (typeof cleanupTimer === 'object' && 'unref' in cleanupTimer) {
+    cleanupTimer.unref();
+  }
+};
 
 const getDefaultWindowMs = () => {
   const value = Number(process.env.RATE_LIMIT_WINDOW_MS);
@@ -44,12 +94,14 @@ export type RateLimitResult = {
 /**
  * Perform a rate limit check for the given key. If a Redis URL is configured via
  * `process.env.REDIS_URL`, the rate limit state is stored in Redis for
- * cross‑instance consistency. Otherwise a fallback in‑memory map is used. The
+ * cross-instance consistency. Otherwise a fallback in-memory map is used. The
  * check is performed as an atomic increment in Redis with an expiration set on
  * first use. If Redis is unavailable, the fallback is used and an error is
  * logged.
  */
 export async function rateLimit(key: string, options: RateLimitOptions = {}): Promise<RateLimitResult> {
+  ensureCleanupTimer();
+
   const windowMs = options.windowMs ?? getDefaultWindowMs();
   const max = options.max ?? getDefaultMax();
   const now = Date.now();
@@ -94,6 +146,7 @@ export async function rateLimit(key: string, options: RateLimitOptions = {}): Pr
   if (!entry || entry.resetAt <= now) {
     const resetAt = now + windowMs;
     store.set(scopedKey, { count: 1, resetAt });
+    evictOldestIfNeeded();
     incrementMetric('rate_limit_allowed', 1, { store: 'memory' });
     return { allowed: true, remaining: Math.max(max - 1, 0), resetAt };
   }
@@ -114,3 +167,8 @@ export function getRateLimitHeaders(result: RateLimitResult) {
     'X-RateLimit-Reset': String(Math.ceil(result.resetAt / 1000)),
   };
 }
+
+export const getRateLimitStoreStats = () => ({
+  size: store.size,
+  maxSize: MAX_STORE_SIZE,
+});

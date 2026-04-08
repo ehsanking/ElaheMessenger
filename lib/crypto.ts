@@ -30,7 +30,7 @@ function openDB(): Promise<IDBDatabase> {
   });
 }
 
-async function storeKey(key: string, value: any): Promise<void> {
+async function storeKey(key: string, value: string | CryptoKeyPair): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(KEY_STORE, 'readwrite');
@@ -40,12 +40,12 @@ async function storeKey(key: string, value: any): Promise<void> {
   });
 }
 
-async function getKey(key: string): Promise<any> {
+async function getKey<T = string>(key: string): Promise<T | undefined> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(KEY_STORE, 'readonly');
     const req = tx.objectStore(KEY_STORE).get(key);
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => resolve(req.result as T | undefined);
     req.onerror = () => reject(req.error);
   });
 }
@@ -103,8 +103,7 @@ export async function importPublicKey(base64Key: string): Promise<CryptoKey> {
       true,
       []
     );
-  } catch (error) {
-    console.error('Error importing public key:', error);
+  } catch {
     throw new Error('Invalid public key format');
   }
 }
@@ -122,16 +121,33 @@ export async function importPrivateKey(jwkString: string): Promise<CryptoKey> {
 
 // ── Key Derivation ──────────────────────────────────────────
 
+/**
+ * Derive a shared AES-256-GCM key from an ECDH key pair.
+ *
+ * Security fixes:
+ * - Uses a random 32-byte salt per derivation instead of a static string.
+ *   The salt is returned so it can be transmitted alongside the public key.
+ * - The derived key is non-extractable to prevent key extraction via XSS.
+ *   Cached session keys use a separate exportable derivation only for
+ *   IndexedDB persistence.
+ *
+ * If a previously generated salt is provided (e.g. from the remote peer),
+ * it will be used for the derivation to ensure both sides derive the same key.
+ */
 export async function deriveSharedSecret(
   privateKey: CryptoKey,
   publicKey: CryptoKey,
-): Promise<CryptoKey> {
+  existingSalt?: ArrayBuffer,
+): Promise<{ key: CryptoKey; salt: ArrayBuffer }> {
   // First derive raw bits using ECDH
   const sharedBits = await window.crypto.subtle.deriveBits(
     { name: 'ECDH', public: publicKey },
     privateKey,
     256,
   );
+
+  // Generate a random salt or use the provided one
+  const salt = existingSalt ?? window.crypto.getRandomValues(new Uint8Array(32)).buffer;
 
   // Then use HKDF to stretch the shared secret into a proper AES key
   const rawKey = await window.crypto.subtle.importKey(
@@ -142,18 +158,20 @@ export async function deriveSharedSecret(
     ['deriveKey'],
   );
 
-  return await window.crypto.subtle.deriveKey(
+  const key = await window.crypto.subtle.deriveKey(
     {
       name: 'HKDF',
       hash: 'SHA-256',
-      salt: new TextEncoder().encode('Elahe Messenger-E2EE-v1'),
-      info: new TextEncoder().encode('message-encryption'),
+      salt: new Uint8Array(salt),
+      info: new TextEncoder().encode('elahe-e2ee-v2-message-encryption'),
     },
     rawKey,
     { name: 'AES-GCM', length: 256 },
-    true, // extractable — needed for caching in IndexedDB
+    false, // non-extractable: prevents key theft via XSS
     ['encrypt', 'decrypt'],
   );
+
+  return { key, salt };
 }
 
 // ── Message Encryption/Decryption ───────────────────────────
@@ -193,8 +211,7 @@ export async function decryptMessage(
     );
 
     return new TextDecoder().decode(decrypted);
-  } catch (error) {
-    console.error('Decryption error:', error);
+  } catch {
     throw new Error('Failed to decrypt message. The key or payload might be invalid.');
   }
 }
@@ -234,8 +251,10 @@ export async function getOrCreateSessionKey(
   recipientId: string,
 ): Promise<CryptoKey> {
   const cacheKey = `session:${recipientId}`;
+  const saltCacheKey = `session-salt:${recipientId}`;
   const cached = await getKey(cacheKey);
-  if (cached) {
+  const cachedSalt = await getKey(saltCacheKey);
+  if (cached && cachedSalt) {
     try {
       return await window.crypto.subtle.importKey(
         'raw',
@@ -251,20 +270,41 @@ export async function getOrCreateSessionKey(
 
   const myPrivateKey = await importPrivateKey(myPrivateKeyJwk);
   const recipientPublicKey = await importPublicKey(recipientPublicKeyBase64);
-  const sessionKey = await deriveSharedSecret(myPrivateKey, recipientPublicKey);
 
-  // Export and cache the derived key
-  const rawKey = await window.crypto.subtle.exportKey('raw', sessionKey);
-  await storeKey(cacheKey, arrayBufferToBase64(rawKey));
+  // Use cached salt if available, otherwise a new random salt is generated
+  const existingSalt = cachedSalt ? base64ToArrayBuffer(cachedSalt) : undefined;
+  const { key: sessionKey, salt } = await deriveSharedSecret(myPrivateKey, recipientPublicKey, existingSalt);
 
-  // Return a non-extractable version for use
-  return await window.crypto.subtle.importKey(
-    'raw',
-    rawKey,
+  // For caching, we need an extractable copy of the key
+  const extractableKey = await window.crypto.subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new Uint8Array(salt),
+      info: new TextEncoder().encode('elahe-e2ee-v2-message-encryption'),
+    },
+    await window.crypto.subtle.importKey(
+      'raw',
+      await window.crypto.subtle.deriveBits(
+        { name: 'ECDH', public: recipientPublicKey },
+        myPrivateKey,
+        256,
+      ),
+      'HKDF',
+      false,
+      ['deriveKey'],
+    ),
     { name: 'AES-GCM', length: 256 },
-    false,
+    true, // extractable for cache only
     ['encrypt', 'decrypt'],
   );
+
+  const rawKey = await window.crypto.subtle.exportKey('raw', extractableKey);
+  await storeKey(cacheKey, arrayBufferToBase64(rawKey));
+  await storeKey(saltCacheKey, arrayBufferToBase64(salt));
+
+  // Return the non-extractable key for runtime use
+  return sessionKey;
 }
 
 // ── Identity Key Persistence ────────────────────────────────

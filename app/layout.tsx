@@ -1,6 +1,10 @@
-import type {Metadata, Viewport} from 'next';
-import './globals.css'; // Global styles
+import type { Metadata, Viewport } from 'next';
+import { cookies, headers } from 'next/headers';
+import './globals.css';
 import PwaPromptClient from '@/components/PwaPromptClient';
+import { ClientProviders } from '@/components/ClientProviders';
+import { resolveLocale, getDirection } from '@/lib/i18n/config';
+import type { Locale } from '@/lib/i18n/config';
 
 export const viewport: Viewport = {
   themeColor: '#0f365b',
@@ -20,12 +24,42 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({children}: {children: React.ReactNode}) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const cookieStore = await cookies();
+  const headerStore = await headers();
+
+  const localeCookie = cookieStore.get('elahe_locale')?.value ?? null;
+  const acceptLang = headerStore.get('accept-language') ?? null;
+  const locale = resolveLocale(localeCookie, acceptLang) as Locale;
+  const direction = getDirection(locale);
+
   return (
-    <html lang="en" dir="ltr" suppressHydrationWarning>
-      <body suppressHydrationWarning className="antialiased font-sans">
-        {children}
-        <PwaPromptClient />
+    <html lang={locale} dir={direction} suppressHydrationWarning>
+      {/* Inline script to prevent FOUC (flash of unstyled content) for dark mode */}
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var t = document.cookie.match(/elahe_theme=([^;]+)/);
+                  var theme = t ? t[1] : 'system';
+                  var resolved = theme === 'system'
+                    ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+                    : theme;
+                  document.documentElement.classList.add(resolved);
+                  document.documentElement.style.colorScheme = resolved;
+                } catch(e) {}
+              })();
+            `,
+          }}
+        />
+      </head>
+      <body suppressHydrationWarning className="antialiased font-sans bg-[var(--bg-primary)] text-[var(--text-primary)]">
+        <ClientProviders initialLocale={locale}>
+          {children}
+          <PwaPromptClient />
+        </ClientProviders>
       </body>
     </html>
   );

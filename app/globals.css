@@ -6,6 +6,42 @@
   --color-brand-gold: #c49a45;
 }
 
+/* ── Dark mode color scheme ────────────────────────────────────
+ * The .dark class is toggled by ThemeProvider on <html>.
+ * Uses CSS custom properties for easy theming.
+ */
+:root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f8f9fa;
+  --bg-tertiary: #e9ecef;
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-muted: #9ca3af;
+  --border-color: #e5e7eb;
+  --surface: #ffffff;
+  --surface-hover: #f3f4f6;
+}
+
+.dark {
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #111111;
+  --bg-tertiary: #1a1a1a;
+  --text-primary: #f9fafb;
+  --text-secondary: #d1d5db;
+  --text-muted: #6b7280;
+  --border-color: #27272a;
+  --surface: #18181b;
+  --surface-hover: #27272a;
+}
+
+/* ── RTL support ───────────────────────────────────────────────
+ * Utility classes for RTL/LTR directional spacing.
+ * These complement Tailwind's built-in RTL support (rtl: prefix).
+ */
+[dir="rtl"] .rtl\:text-right { text-align: right; }
+[dir="rtl"] .rtl\:text-left  { text-align: left; }
+[dir="rtl"] .rtl\:flip       { transform: scaleX(-1); }
+
 /* Safe area padding for mobile devices (notch, home indicator) */
 .safe-area-pb {
   padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -22,4 +58,10 @@
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* ── Smooth transitions for theme switching ────────────────── */
+html.dark body,
+html.light body {
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
