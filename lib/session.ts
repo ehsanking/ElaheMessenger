@@ -281,10 +281,6 @@ export const shouldRotateSession = (session: SessionData): boolean => {
 };
 
 /**
- * Rotate a session: issue a fresh token with new issuedAt, csrfToken, and
- * extended expiry.  The old token becomes invalid after rotation.
- */
-/**
  * Rotate the current session by issuing a fresh token and cookie.
  */
 export const rotateSession = (response: NextResponse, session: SessionData, requestContext?: { userAgent?: string | null; ip?: string | null }): SessionData => {
