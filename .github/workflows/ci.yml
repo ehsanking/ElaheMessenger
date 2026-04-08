@@ -52,3 +52,34 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog secret scan (verified findings only)
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --results=verified
+
+  sast:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Semgrep SAST (error severity only)
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: p/security-audit p/typescript
+          generateSarif: "1"
+          publishToken: ${{ secrets.SEMGREP_APP_TOKEN }}
+          auditOn: push
+          extraArgs: --severity=ERROR
