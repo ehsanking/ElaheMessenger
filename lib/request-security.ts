@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { getSessionFromRequest, type SessionData } from '@/lib/session';
 import { getFreshSessionUser, isSessionFreshForUser } from '@/lib/session-auth';
 
@@ -68,7 +69,13 @@ export const requireAdminSessionFresh = async (request: Request): Promise<Sessio
 
 export const validateCsrfToken = (request: Request, session: SessionData) => {
   const csrfToken = request.headers.get('x-csrf-token');
-  if (!csrfToken || csrfToken !== session.csrfToken) {
+  if (!csrfToken || !session.csrfToken) {
+    throw new Error('Invalid CSRF token.');
+  }
+  // C4 fix: Use timing-safe comparison to prevent timing attacks
+  const left = Buffer.from(csrfToken);
+  const right = Buffer.from(session.csrfToken);
+  if (left.length !== right.length || !crypto.timingSafeEqual(left, right)) {
     throw new Error('Invalid CSRF token.');
   }
 };

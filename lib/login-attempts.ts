@@ -2,6 +2,17 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { logger } from '@/lib/logger';
 
+/**
+ * C6 fix: All raw SQL queries now use Prisma's tagged template literals
+ * ($executeRaw / $queryRaw) instead of $executeRawUnsafe.
+ *
+ * Tagged templates use parameterised queries under the hood, which prevents
+ * SQL injection even if the query strings are ever modified to include
+ * dynamic values in the future.  $executeRawUnsafe accepts plain strings
+ * and is inherently vulnerable to injection if user input is ever
+ * interpolated — using the safe variant closes this attack vector.
+ */
+
 const isMissingLoginAttemptTableError = (error: unknown) => {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
   if (error.code !== 'P2021') return false;
@@ -10,7 +21,8 @@ const isMissingLoginAttemptTableError = (error: unknown) => {
 };
 
 async function createLoginAttemptTableIfMissing() {
-  await prisma.$executeRawUnsafe(`
+  // C6 fix: Use $executeRaw tagged template — safe against SQL injection
+  await prisma.$executeRaw`
     CREATE TABLE IF NOT EXISTS "LoginAttempt" (
       "id" TEXT NOT NULL,
       "ip" TEXT NOT NULL,
@@ -18,18 +30,18 @@ async function createLoginAttemptTableIfMissing() {
       "success" BOOLEAN NOT NULL,
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "LoginAttempt_pkey" PRIMARY KEY ("id")
-    );
-  `);
+    )
+  `;
 
-  await prisma.$executeRawUnsafe(`
+  await prisma.$executeRaw`
     CREATE INDEX IF NOT EXISTS "LoginAttempt_ip_createdAt_idx"
-    ON "LoginAttempt"("ip", "createdAt");
-  `);
+    ON "LoginAttempt"("ip", "createdAt")
+  `;
 
-  await prisma.$executeRawUnsafe(`
+  await prisma.$executeRaw`
     CREATE INDEX IF NOT EXISTS "LoginAttempt_username_createdAt_idx"
-    ON "LoginAttempt"("username", "createdAt");
-  `);
+    ON "LoginAttempt"("username", "createdAt")
+  `;
 }
 
 async function ensureLoginAttemptTable() {
@@ -43,8 +55,8 @@ export async function countFailedIpAttempts(ip: string, since: Date) {
       where: {
         ip,
         success: false,
-        createdAt: { gte: since }
-      }
+        createdAt: { gte: since },
+      },
     });
   } catch (error) {
     if (!isMissingLoginAttemptTableError(error)) throw error;
@@ -53,8 +65,8 @@ export async function countFailedIpAttempts(ip: string, since: Date) {
       where: {
         ip,
         success: false,
-        createdAt: { gte: since }
-      }
+        createdAt: { gte: since },
+      },
     });
   }
 }
