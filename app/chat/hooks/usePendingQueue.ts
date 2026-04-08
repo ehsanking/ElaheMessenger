@@ -46,6 +46,8 @@ export function usePendingQueue<TPatch extends object>({ storageKey, socket, upd
       fileUrl: queued.fileUrl,
       fileName: queued.fileName,
       fileSize: queued.fileSize,
+      keyGeneration: queued.keyGeneration,
+      messageIndex: queued.messageIndex,
     });
     updateLocalMessageStatus(queued.tempId, 'SENT');
     return true;

@@ -58,6 +58,7 @@ model User {
   sentMessages     Message[]      @relation("SentMessages")
   receivedMessages Message[]      @relation("ReceivedMessages")
   groupMemberships GroupMember[]
+  groupSenderKeys GroupSenderKey[]
   reportsMade      Report[]       @relation("Reporter")
   reportsGot       Report[]       @relation("Reported")
   pushSubscriptions PushSubscription[]
@@ -187,6 +188,7 @@ model Group {
   description String?
   avatar      String?  // Group/Channel avatar image
   type        String   @default("GROUP") // GROUP, CHANNEL
+  e2eeEnabled Boolean  @default(false)
   isPublic    Boolean  @default(false)
   inviteLink  String?  @unique
   createdAt   DateTime @default(now())
@@ -194,6 +196,7 @@ model Group {
 
   members  GroupMember[]
   messages Message[]
+  senderKeys GroupSenderKey[]
 
   @@index([type])
   @@index([inviteLink])
@@ -212,6 +215,39 @@ model GroupMember {
 
   @@unique([groupId, userId])
   @@index([userId])
+}
+
+model GroupSenderKey {
+  id            String   @id @default(uuid())
+  groupId       String
+  userId        String
+  deviceId      String
+  chainKey      String
+  publicKey     String
+  keyGeneration Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId, deviceId])
+  @@index([groupId, keyGeneration])
+}
+
+model GroupSenderKeyDistribution {
+  id              String   @id @default(uuid())
+  groupId         String
+  senderUserId    String
+  recipientUserId String
+  wrappedKey      String
+  nonce           String
+  keyGeneration   Int
+  consumed        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  @@index([recipientUserId, consumed])
+  @@index([groupId, senderUserId, keyGeneration])
 }
 
 model Report {

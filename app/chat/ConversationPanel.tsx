@@ -8,6 +8,7 @@ export type ConversationPanelProps = {
   title: string;
   recipientId?: string;
   isGroup?: boolean;
+  isGroupE2eeActive?: boolean;
   isVerifiedContact?: boolean;
 };
 
@@ -20,6 +21,7 @@ export default function ConversationPanel({
   title,
   recipientId,
   isGroup = false,
+  isGroupE2eeActive = false,
   isVerifiedContact = false,
 }: ConversationPanelProps) {
   const [dmEnrolled, setDmEnrolled] = useState(false);
@@ -43,6 +45,12 @@ export default function ConversationPanel({
 
   const e2eeState = useMemo<E2EEState>(() => {
     if (isGroup) {
+      if (isGroupE2eeActive) {
+        return {
+          icon: <Lock className="h-4 w-4 text-emerald-500" aria-hidden="true" />,
+          label: 'Group end-to-end encryption active',
+        };
+      }
       return {
         icon: <ShieldOff className="h-4 w-4 text-zinc-400" aria-hidden="true" />,
         label: 'Group messages are not yet end-to-end encrypted',
@@ -60,7 +68,7 @@ export default function ConversationPanel({
       icon: <ShieldAlert className="h-4 w-4 text-amber-500" aria-hidden="true" />,
       label: 'Encryption keys not yet exchanged',
     };
-  }, [dmEnrolled, isGroup]);
+  }, [dmEnrolled, isGroup, isGroupE2eeActive]);
 
   return (
     <header className="flex min-w-0 items-center gap-2">

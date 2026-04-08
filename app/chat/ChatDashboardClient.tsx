@@ -104,6 +104,7 @@ interface Community {
   type: string;
   isPublic: boolean;
   inviteLink?: string | null;
+  e2eeEnabled?: boolean;
   memberCount: number;
   myRole: string;
 }
@@ -1140,9 +1141,15 @@ function ChatDashboardContent() {
                 <p className="font-medium truncate">{selectedGroup?.name}</p>
               )}
               {selectedGroup ? (
-                <span title="Group messages are not yet end-to-end encrypted">
-                  <ShieldOff className="w-4 h-4 text-zinc-400 shrink-0" />
-                </span>
+                selectedGroup.e2eeEnabled ? (
+                  <span title="Group end-to-end encryption active">
+                    <Lock className="w-4 h-4 text-emerald-500 shrink-0" />
+                  </span>
+                ) : (
+                  <span title="Group messages are not yet end-to-end encrypted">
+                    <ShieldOff className="w-4 h-4 text-zinc-400 shrink-0" />
+                  </span>
+                )
               ) : recipientE2eeEnrolled ? (
                 <span title="End-to-end encrypted">
                   <Lock className="w-4 h-4 text-emerald-500 shrink-0" />
