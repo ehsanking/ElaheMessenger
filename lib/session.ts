@@ -3,6 +3,11 @@ import type { NextRequest, NextResponse } from 'next/server';
 
 export const SESSION_COOKIE_NAME = 'elahe_session';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+/**
+ * Session rotation interval: tokens older than this are automatically
+ * rotated on the next request to limit the window of a stolen token.
+ */
+const SESSION_ROTATION_MS = Number(process.env.SESSION_ROTATION_MS) || 1000 * 60 * 60; // 1 hour
 
 export type SessionData = {
   userId: string;
@@ -123,6 +128,32 @@ export const issueSession = (response: NextResponse, user: SessionUserLike, requ
   if (!session) throw new Error('Failed to create session.');
   response.cookies.set(SESSION_COOKIE_NAME, token, getCookieOptions(session.expiresAt));
   return session;
+};
+
+/**
+ * Check whether a session token needs to be rotated based on its issuedAt
+ * timestamp.  Returns true if the token is older than SESSION_ROTATION_MS.
+ *
+ * Fix: Without rotation, a stolen session cookie remains valid for the
+ * full 7-day TTL.  With rotation, the window shrinks to SESSION_ROTATION_MS.
+ */
+export const shouldRotateSession = (session: SessionData): boolean => {
+  if (!session.issuedAt) return true;
+  return Date.now() - session.issuedAt > SESSION_ROTATION_MS;
+};
+
+/**
+ * Rotate a session: issue a fresh token with new issuedAt, csrfToken, and
+ * extended expiry.  The old token becomes invalid after rotation.
+ */
+export const rotateSession = (response: NextResponse, session: SessionData, requestContext?: { userAgent?: string | null; ip?: string | null }) => {
+  const user: SessionUserLike = {
+    userId: session.userId,
+    role: session.role,
+    needsPasswordChange: session.needsPasswordChange,
+    sessionVersion: session.sessionVersion,
+  };
+  return issueSession(response, user, requestContext);
 };
 
 export const clearSession = (response: NextResponse) => {

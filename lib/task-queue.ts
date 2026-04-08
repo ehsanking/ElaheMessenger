@@ -54,7 +54,7 @@ class SimpleQueue {
   add<T>(task: () => Promise<T>): Promise<T> {
     this.emit('add');
     return new Promise<T>((resolve, reject) => {
-      this.queue.push({ task, resolve: resolve as any, reject });
+      this.queue.push({ task, resolve: resolve as (value: unknown) => void, reject });
       this.size = this.queue.length;
       this.pending = this.running;
       this.process();
@@ -135,7 +135,9 @@ const updateQueueMetrics = async () => {
   }
 };
 
-['add', 'next', 'completed', 'error'].forEach((eventName) => queue.on(eventName as any, () => { void updateQueueMetrics(); }));
+(['add', 'next', 'completed', 'error'] as const satisfies readonly QueueEvent[]).forEach(
+  (eventName) => queue.on(eventName, () => { void updateQueueMetrics(); }),
+);
 
 export const enqueueTask = async <T>(task: () => Promise<T>): Promise<T> => {
   incrementMetric('background_jobs_inline_enqueued');

@@ -195,7 +195,7 @@ export function setupSocket(io: Server, options: SocketOptions) {
               idempotencyKey: data.idempotencyKey || null,
               replyToId: data.replyToId || null,
               deliveryStatus: 'SENT',
-            } as any,
+            },
           });
         }
 
@@ -210,14 +210,14 @@ export function setupSocket(io: Server, options: SocketOptions) {
           fileUrl: data.fileUrl || null,
           fileName: data.fileName || null,
           fileSize: data.fileSize || null,
-          wrappedFileKey: (message as any).wrappedFileKey ?? data.wrappedFileKey ?? null,
-          wrappedFileKeyNonce: (message as any).wrappedFileKeyNonce ?? data.wrappedFileKeyNonce ?? null,
-          fileNonce: (message as any).fileNonce ?? data.fileNonce ?? null,
+          wrappedFileKey: message.wrappedFileKey ?? data.wrappedFileKey ?? null,
+          wrappedFileKeyNonce: message.wrappedFileKeyNonce ?? data.wrappedFileKeyNonce ?? null,
+          fileNonce: message.fileNonce ?? data.fileNonce ?? null,
           createdAt: message.createdAt.toISOString(),
-          editedAt: (message as any).editedAt ? new Date((message as any).editedAt).toISOString() : null,
-          replyToId: (message as any).replyToId ?? data.replyToId ?? null,
-          deliveryStatus: ((message as any).deliveryStatus ?? 'SENT') as DeliveryState,
-          readAt: (message as any).readAt ? new Date((message as any).readAt).toISOString() : null,
+          editedAt: message.editedAt ? new Date(message.editedAt).toISOString() : null,
+          replyToId: message.replyToId ?? data.replyToId ?? null,
+          deliveryStatus: (message.deliveryStatus ?? 'SENT') as DeliveryState,
+          readAt: message.readAt ? new Date(message.readAt).toISOString() : null,
           tempId: data.tempId,
           idempotencyKey: data.idempotencyKey || null,
         };
@@ -258,7 +258,7 @@ export function setupSocket(io: Server, options: SocketOptions) {
                 retryCount: { increment: 1 },
                 lastError: err instanceof Error ? err.message : String(err),
                 deliveryStatus: 'FAILED',
-              } as any,
+              },
             }).catch(() => undefined);
           }
         }
@@ -310,7 +310,7 @@ export function setupSocket(io: Server, options: SocketOptions) {
         data: {
           deliveryStatus: 'READ',
           readAt: new Date(),
-        } as any,
+        },
       }).catch(() => null);
       if (!updated) return;
 
@@ -380,10 +380,11 @@ export function setupSocket(io: Server, options: SocketOptions) {
         socket.emit('messageEditRejected', result);
         return;
       }
-      const msg = result.message as any;
+      const msg = result.message;
+      const editedAtStr = msg.editedAt ? new Date(msg.editedAt).toISOString() : new Date().toISOString();
       const room = msg.groupId ? `group:${msg.groupId}` : msg.recipientId ? msg.recipientId : userId;
-      io.to(room).emit('messageEdited', { id: msg.id, ciphertext: msg.ciphertext, nonce: msg.nonce, editedAt: msg.editedAt?.toISOString?.() || new Date(msg.editedAt).toISOString() });
-      io.to(userId).emit('messageEdited', { id: msg.id, ciphertext: msg.ciphertext, nonce: msg.nonce, editedAt: msg.editedAt?.toISOString?.() || new Date(msg.editedAt).toISOString() });
+      io.to(room).emit('messageEdited', { id: msg.id, ciphertext: msg.ciphertext, nonce: msg.nonce, editedAt: editedAtStr });
+      io.to(userId).emit('messageEdited', { id: msg.id, ciphertext: msg.ciphertext, nonce: msg.nonce, editedAt: editedAtStr });
     });
 
     socket.on('typing', async (data) => {
