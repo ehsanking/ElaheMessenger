@@ -10,6 +10,18 @@
  * - Legacy shims: `auth.ts`, `auth-actions.ts`, `auth.login.ts`, `auth.register.ts`.
  */
 
-export { registerUser } from './auth.register';
-export { loginUser } from './auth.login';
-export { getPublicSettings } from './auth-legacy';
+import { loginUser as origLoginUser } from './auth.login';
+import { registerUser as origRegisterUser } from './auth.register';
+import { getPublicSettings as origGetPublicSettings } from './auth-legacy';
+
+export async function registerUser(...args: Parameters<typeof origRegisterUser>) {
+  return origRegisterUser(...args);
+}
+
+export async function loginUser(...args: Parameters<typeof origLoginUser>) {
+  return origLoginUser(...args);
+}
+
+export async function getPublicSettings(...args: Parameters<typeof origGetPublicSettings>) {
+  return origGetPublicSettings(...args);
+}

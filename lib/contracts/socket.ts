@@ -23,5 +23,7 @@ export type SocketMessagePayload = {
   replyToId?: string | null;
   replyTo?: { id: string; senderId: string; ciphertext: string; nonce: string; createdAt: string; isDeleted?: boolean } | null;
   reactions?: Array<{ emoji: string; userId: string; createdAt: string }> ;
+  keyGeneration?: number | null;
+  messageIndex?: number | null;
   _self?: boolean;
 };

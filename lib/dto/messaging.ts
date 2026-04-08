@@ -13,6 +13,8 @@ export type SendMessageDto = {
   tempId?: string | null;
   idempotencyKey?: string | null;
   replyToId?: string | null;
+  keyGeneration?: number | null;
+  messageIndex?: number | null;
 };
 
 const isNonEmptyString = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
@@ -39,6 +41,12 @@ export const parseSendMessageDto = (value: unknown): SendMessageDto | null => {
   const wrappedFileKey = typeof data.wrappedFileKey === 'string' ? data.wrappedFileKey.trim() : null;
   const wrappedFileKeyNonce = typeof data.wrappedFileKeyNonce === 'string' ? data.wrappedFileKeyNonce.trim() : null;
   const fileNonce = typeof data.fileNonce === 'string' ? data.fileNonce.trim() : null;
+  const keyGeneration = typeof data.keyGeneration === 'number' && Number.isInteger(data.keyGeneration)
+    ? data.keyGeneration
+    : null;
+  const messageIndex = typeof data.messageIndex === 'number' && Number.isInteger(data.messageIndex)
+    ? data.messageIndex
+    : null;
 
   if ((!recipientId && !groupId) || !ciphertext) return null;
   if (ciphertext.length > 64_000) return null;
@@ -58,5 +66,7 @@ export const parseSendMessageDto = (value: unknown): SendMessageDto | null => {
     tempId,
     idempotencyKey,
     replyToId,
+    keyGeneration,
+    messageIndex,
   };
 };

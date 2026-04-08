@@ -86,6 +86,25 @@ export function setupSocket(io: Server, options: SocketOptions) {
       logger.info('User joined group room', { userId, groupId });
     });
 
+    socket.on('groupKeyRotated', async (payload: { groupId?: string; keyGeneration?: number } | undefined) => {
+      const userId = socket.data.userId;
+      const groupId = typeof payload?.groupId === 'string' ? payload.groupId.trim() : '';
+      const keyGeneration = typeof payload?.keyGeneration === 'number' ? payload.keyGeneration : null;
+      if (!userId || !groupId) return;
+      const access = await authorizeConversationAction(userId, { groupId }, 'message.send');
+      if (!access.allowed) return;
+      socket.to(`group:${groupId}`).emit('groupKeyRotated', { groupId, keyGeneration });
+    });
+
+    socket.on('senderKeyDistributed', async (payload: { groupId?: string; [key: string]: unknown } | undefined) => {
+      const userId = socket.data.userId;
+      const groupId = typeof payload?.groupId === 'string' ? payload.groupId.trim() : '';
+      if (!userId || !groupId) return;
+      const access = await authorizeConversationAction(userId, { groupId }, 'message.send');
+      if (!access.allowed) return;
+      socket.to(`group:${groupId}`).emit('senderKeyDistributed', payload);
+    });
+
     socket.on('sendMessage', async (rawData) => {
       const data = parseSendMessageDto(rawData);
       if (!data) {
@@ -220,6 +239,8 @@ export function setupSocket(io: Server, options: SocketOptions) {
           readAt: message.readAt ? new Date(message.readAt).toISOString() : null,
           tempId: data.tempId,
           idempotencyKey: data.idempotencyKey || null,
+          keyGeneration: data.keyGeneration ?? null,
+          messageIndex: data.messageIndex ?? null,
         };
 
         if (data.groupId) {
