@@ -6,4 +6,20 @@
  * - Import from `profile.actions.ts`.
  */
 
-export { getUserProfile, getPublicUserProfile, updateUserProfile } from './profile.actions';
+import {
+  getPublicUserProfile as origGetPublicUserProfile,
+  getUserProfile as origGetUserProfile,
+  updateUserProfile as origUpdateUserProfile,
+} from './profile.actions';
+
+export async function getUserProfile(...args: Parameters<typeof origGetUserProfile>) {
+  return origGetUserProfile(...args);
+}
+
+export async function getPublicUserProfile(...args: Parameters<typeof origGetPublicUserProfile>) {
+  return origGetPublicUserProfile(...args);
+}
+
+export async function updateUserProfile(...args: Parameters<typeof origUpdateUserProfile>) {
+  return origUpdateUserProfile(...args);
+}
