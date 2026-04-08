@@ -96,7 +96,19 @@ export async function middleware(request: NextRequest) {
 
       if (session) {
         const csrfToken = request.headers.get('x-csrf-token');
-        if (!csrfToken || csrfToken !== session.csrfToken) {
+        if (!csrfToken || !session.csrfToken) {
+          throw new Error('Invalid CSRF token.');
+        }
+        // C4 fix: Use constant-time comparison to prevent timing attacks
+        // that could allow an attacker to guess the CSRF token byte-by-byte.
+        if (csrfToken.length !== session.csrfToken.length) {
+          throw new Error('Invalid CSRF token.');
+        }
+        let mismatch = 0;
+        for (let i = 0; i < csrfToken.length; i++) {
+          mismatch |= csrfToken.charCodeAt(i) ^ session.csrfToken.charCodeAt(i);
+        }
+        if (mismatch !== 0) {
           throw new Error('Invalid CSRF token.');
         }
       }

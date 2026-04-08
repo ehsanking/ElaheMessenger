@@ -88,10 +88,11 @@ describe('Session Management', () => {
         sessionVersion: 1,
       });
 
-      // Tamper with the payload
-      const [payload, sig] = token.split('.');
-      const tamperedPayload = payload.slice(0, -2) + 'AA';
-      const tampered = `${tamperedPayload}.${sig}`;
+      // Tamper with a character in the ciphertext portion (v2 format: ver.iv.ct.tag.sig)
+      const parts = token.split('.');
+      const ct = parts[2];
+      const tamperedCt = ct.slice(0, -1) + (ct.slice(-1) === 'a' ? 'b' : 'a');
+      const tampered = [parts[0], parts[1], tamperedCt, parts[3], parts[4]].join('.');
 
       const session = await verifySessionToken(tampered);
       expect(session).toBeNull();
@@ -130,9 +131,11 @@ describe('Session Management', () => {
         sessionVersion: 1,
       });
 
-      // shouldRotateSession should exist if rotation was implemented
+      // shouldRotateSession expects SessionData, not a raw token string
       if (typeof shouldRotateSession === 'function') {
-        const result = shouldRotateSession(token);
+        const session = await verifySessionToken(token);
+        expect(session).not.toBeNull();
+        const result = shouldRotateSession(session!);
         expect(result).toBe(false);
       }
     });
@@ -140,15 +143,17 @@ describe('Session Management', () => {
 
   describe('IP/User-Agent binding', () => {
     it('includes user-agent hash when provided', async () => {
-      const token = await createSessionToken({
-        userId: 'user-ua',
-        role: 'USER',
-        needsPasswordChange: false,
-        sessionVersion: 1,
-        userAgent: 'Mozilla/5.0 Test',
-      });
+      const token = await createSessionToken(
+        {
+          userId: 'user-ua',
+          role: 'USER',
+          needsPasswordChange: false,
+          sessionVersion: 1,
+        },
+        { userAgent: 'Mozilla/5.0 Test', ip: null },
+      );
 
-      const session = await verifySessionToken(token, 'Mozilla/5.0 Test');
+      const session = await verifySessionToken(token, { userAgent: 'Mozilla/5.0 Test', ip: null });
       expect(session).not.toBeNull();
       expect(session!.userId).toBe('user-ua');
     });

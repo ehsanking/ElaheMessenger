@@ -21,7 +21,8 @@ describe('Session Management', () => {
       sessionVersion: 1,
     });
     expect(token).toBeTruthy();
-    expect(token.split('.').length).toBe(2);
+    // C3: v2 tokens use encrypt-then-sign format: version.iv.ciphertext.tag.signature
+    expect(token.split('.').length).toBe(5);
 
     const session = verifySessionToken(token);
     expect(session).not.toBeNull();
@@ -37,7 +38,11 @@ describe('Session Management', () => {
       needsPasswordChange: false,
       sessionVersion: 1,
     });
-    const tampered = token.replace(token[5], token[5] === 'a' ? 'b' : 'a');
+    // Tamper with a character in the ciphertext portion
+    const parts = token.split('.');
+    const ct = parts[2];
+    const tamperedCt = ct.slice(0, -1) + (ct.slice(-1) === 'a' ? 'b' : 'a');
+    const tampered = [parts[0], parts[1], tamperedCt, parts[3], parts[4]].join('.');
     expect(verifySessionToken(tampered)).toBeNull();
   });
 
