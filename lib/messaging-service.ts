@@ -16,6 +16,7 @@ const MAX_SYNC_BATCH = Number(process.env.OFFLINE_SYNC_BATCH || 200);
 type MessageWithRelations = Message & {
   replyTo?: Pick<Message, 'id' | 'senderId' | 'ciphertext' | 'nonce' | 'createdAt' | 'isDeleted'> | null;
   reactions?: Pick<MessageReaction, 'emoji' | 'userId' | 'createdAt'>[];
+  forwardedFrom?: string | null;
 };
 
 type MessageHistoryResult =
@@ -273,7 +274,38 @@ export const searchMessages = async (
     include: messageInclude,
   });
   incrementMetric('message_searches');
-  return { success: true, messages, mode: 'metadata_only' as const };
+  const threadRoots = messages.map((message) => message.replyToId).filter((value): value is string => typeof value === 'string' && value.length > 0);
+  const uniqueRoots = [...new Set(threadRoots)];
+  const threadContext = uniqueRoots.length === 0 ? [] : await prisma.message.findMany({
+    where: { id: { in: uniqueRoots } },
+    select: { id: true, senderId: true, createdAt: true, replyToId: true, ciphertext: true, nonce: true },
+  });
+  return { success: true, messages, mode: 'metadata_only' as const, threadContext };
+};
+
+
+export const getThreadMessages = async (userId: string, messageId: string) => {
+  const rootMessage = await prisma.message.findUnique({
+    where: { id: messageId },
+    include: messageInclude,
+  });
+  if (!rootMessage || rootMessage.isDeleted) return { error: 'Thread root not found.' };
+
+  const access = await ensureConversationAccess(userId, rootMessage.recipientId, rootMessage.groupId);
+  if (!access.allowed) return { error: 'Access denied.' };
+
+  const replies = await prisma.message.findMany({
+    where: {
+      isDeleted: false,
+      replyToId: messageId,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+    },
+    include: messageInclude,
+    orderBy: { createdAt: 'asc' },
+    take: 500,
+  });
+
+  return { success: true as const, root: rootMessage, messages: replies };
 };
 
 export const queueMessageRetry = async (messageId: string, reason?: string | null) => {
