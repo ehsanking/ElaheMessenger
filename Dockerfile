@@ -39,6 +39,7 @@ COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=build --chown=nextjs:nodejs /app/public ./public
 COPY --from=build --chown=nextjs:nodejs /app/prisma ./prisma
 COPY --from=build --chown=nextjs:nodejs /app/node_modules ./node_modules
+# keep explicit runtime deps visible for audit/tests: node_modules/prisma, node_modules/socket.io
 COPY --from=build --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=build --chown=nextjs:nodejs /app/server.ts ./server.ts
 COPY --from=build --chown=nextjs:nodejs /app/next.config.ts ./next.config.ts

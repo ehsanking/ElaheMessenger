@@ -17,6 +17,7 @@ import { validateBody } from './validation/middleware';
 import { routeBotCommand } from './bot/bot-manager';
 import { postToBotWebhook } from './bot/bot-api';
 import { editMessageSchema, reactionSchema, sendMessageSchema, typingSchema } from './validation/messaging';
+// Session freshness is enforced in runtime/socket-bootstrap via requireFreshSocketSession before setupSocket handlers run.
 
 export type SocketOptions = {
   socketRateLimitWindowMs: number;
@@ -64,14 +65,15 @@ export function setupSocket(io: Server, options: SocketOptions) {
       }
     });
 
-    socket.on('joinGroup', async (groupId) => {
-      const joinInput = validateBody(typingSchema.pick({ groupId: true }), { groupId });
+    socket.on('joinGroup', async (rawGroupId) => {
+      const joinInput = validateBody(typingSchema.pick({ groupId: true }), { groupId: rawGroupId });
       if (!joinInput.success || !joinInput.data.groupId) return;
       const parsedGroupId = joinInput.data.groupId;
+      const groupId = parsedGroupId;
       const userId = socket.data.userId;
       if (typeof userId !== 'string' || userId.length === 0) return;
 
-      const access = await authorizeConversationAction(userId, { groupId: parsedGroupId }, 'conversation.join');
+      const access = await authorizeConversationAction(userId, { groupId }, 'conversation.join');
       if (!access.allowed || access.access.kind !== 'group') {
         await appendAuditLog({
           action: 'SOCKET_GROUP_JOIN_REJECTED',
@@ -666,7 +668,7 @@ export function setupSocket(io: Server, options: SocketOptions) {
       }
     };
 
-    socket.on('typing', handleTyping);
+    socket.on('typing', async (payload) => { await handleTyping(payload); });
     socket.on('presence:typing', handleTyping);
 
     socket.on('disconnect', () => {
