@@ -82,6 +82,17 @@ jobs:
         run: npm run build
 
       - name: Docker compose config validation
+        env:
+          JWT_SECRET: ci-jwt-secret
+          SESSION_SECRET: ci-session-secret
+          ENCRYPTION_KEY: ci-encryption-key
+          DOWNLOAD_TOKEN_SECRET: ci-download-token-secret
+          ADMIN_USERNAME: ci-admin
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: elahe_test
+          APP_DB_USER: elahe_app
+          APP_DB_PASSWORD: elahe_app_password
         run: docker compose config >/dev/null
 
       - name: Docker build validation
