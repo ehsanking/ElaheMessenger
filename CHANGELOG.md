@@ -2,8 +2,17 @@
 
 ## Unreleased
 
+### Dependency updates and security
+- **Security**: Pinned `serialize-javascript` to `>=7.0.5` via npm overrides to fix 4 high-severity CVEs (`GHSA-5c6j-r48x-rmvq`, `GHSA-qj8w-gfj5-8c6v`) in the transitive dependency chain of `workbox-webpack-plugin`.
+- **vitest**: upgraded `3.2.4` → `4.1.4`; added `@vitejs/plugin-react@6.0.1` to `vitest.config.ts` so TSX files are compiled correctly under Vite 6.
+- **lucide-react**: upgraded `0.553.0` → `1.8.0`; replaced removed brand icon `Github` with `GitBranch` in `app/open-source/page.tsx`.
+- **tailwindcss** + **@tailwindcss/postcss**: upgraded `4.1.11` → `4.2.2`.
+- **argon2**: upgraded `0.41.1` → `0.44.0` (security and compatibility improvements).
+- **postcss**: upgraded `8.5.8` → `8.5.9` (patch).
+- Ran `npm update` to advance all packages to their latest compatible semver versions (`@aws-sdk/*`, `bullmq`, `@types/node`, etc.).
+
 ### Bug fixes and code quality
-- Fixed TypeScript deprecation warning `TS5101` in `tsconfig.json` by adding `"ignoreDeprecations": "6.0"` to silence the `baseUrl` deprecation for TypeScript 7.0 compatibility.
+- Removed `baseUrl` from `tsconfig.json` (deprecated in TypeScript 7.0) — `paths` aliases continue to work with `moduleResolution: bundler` without requiring `baseUrl`.
 - Fixed `withRateLimit` in `lib/rate-limit.ts`: removed unnecessary `async` keyword from the outer function since it performs no async work itself. Callers no longer need to `await` the wrapper — it now directly returns the handler function as expected.
 
 ### Authz consistency
