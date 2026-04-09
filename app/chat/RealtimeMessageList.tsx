@@ -64,7 +64,6 @@ export default function RealtimeMessageList({ messages }: RealtimeMessageListPro
           );
         }
 
-        const countdown = message.expiresAt ? Math.max(0, Math.floor((new Date(message.expiresAt).getTime() - Date.now()) / 1000)) : null;
         return (
           <div
             key={message.id}
