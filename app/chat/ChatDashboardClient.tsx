@@ -1735,6 +1735,9 @@ function ChatDashboardContent() {
                     </div>
                   )}
                 </div>
+                {replyCountByRoot[msg.id] ? (
+                  <button type="button" onClick={() => void fetchThread(msg)} className="mt-1 text-[10px] text-zinc-400 hover:text-zinc-200">View Thread ({replyCountByRoot[msg.id]} replies)</button>
+                ) : null}
               </div>
             ))}
           </div>
