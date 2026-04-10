@@ -42,6 +42,7 @@
     "bullmq": "^5.73.1",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
+    "geist": "^1.7.0",
     "idb": "8.0.3",
     "ioredis": "^5.10.1",
     "lucide-react": "0.553.0",

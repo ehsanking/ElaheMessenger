@@ -1,94 +1,108 @@
 'use client';
 
-import { motion } from 'motion/react';
-import { Smartphone, Lock } from 'lucide-react';
+import { motion, useReducedMotion } from 'motion/react';
+import { Lock } from 'lucide-react';
 
+/**
+ * Modern, lightweight hero animation:
+ *  - Soft orbiting rings with pulsating core
+ *  - Secure packet traveling along a sine path
+ *  - Respects prefers-reduced-motion
+ */
 export default function EncryptionAnimation() {
+  const prefersReducedMotion = useReducedMotion();
+
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none z-0 opacity-20 md:opacity-30">
-      <div className="relative w-full h-full max-w-6xl mx-auto flex items-center justify-between px-10">
-        
-        {/* Left Phone */}
-        <motion.div 
-          initial={{ x: -50, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          transition={{ duration: 1, ease: "easeOut" }}
-          className="relative"
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0 z-0 overflow-hidden opacity-60 dark:opacity-40"
+    >
+      <div className="relative mx-auto flex h-full w-full max-w-6xl items-center justify-center">
+        {/* Background orbit grid */}
+        <svg
+          className="absolute inset-0 h-full w-full"
+          viewBox="0 0 1000 600"
+          preserveAspectRatio="xMidYMid slice"
+          fill="none"
         >
-          <Smartphone className="w-24 h-24 md:w-32 md:h-32 text-brand-blue" />
-          <motion.div 
-            animate={{ scale: [1, 1.2, 1] }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-brand-gold rounded-full blur-sm"
+          <defs>
+            <linearGradient id="orbit-stroke" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="oklch(72% 0.18 275 / 0)" />
+              <stop offset="50%" stopColor="oklch(72% 0.18 275 / 0.6)" />
+              <stop offset="100%" stopColor="oklch(72% 0.18 275 / 0)" />
+            </linearGradient>
+            <linearGradient id="gold-stroke" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="oklch(78% 0.14 82 / 0)" />
+              <stop offset="50%" stopColor="oklch(78% 0.14 82 / 0.85)" />
+              <stop offset="100%" stopColor="oklch(78% 0.14 82 / 0)" />
+            </linearGradient>
+            <radialGradient id="core-glow" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="oklch(82% 0.14 82 / 0.55)" />
+              <stop offset="100%" stopColor="oklch(82% 0.14 82 / 0)" />
+            </radialGradient>
+          </defs>
+
+          {/* Concentric orbits */}
+          {[90, 160, 230, 310].map((r, idx) => (
+            <motion.circle
+              key={r}
+              cx="500"
+              cy="300"
+              r={r}
+              stroke="url(#orbit-stroke)"
+              strokeWidth={idx === 1 ? 1.2 : 0.8}
+              strokeDasharray={idx % 2 === 0 ? '2 10' : '1 14'}
+              initial={{ rotate: 0, opacity: 0 }}
+              animate={
+                prefersReducedMotion
+                  ? { opacity: 0.5 }
+                  : {
+                      rotate: idx % 2 === 0 ? 360 : -360,
+                      opacity: 0.6,
+                    }
+              }
+              transition={{
+                duration: 28 + idx * 6,
+                repeat: Infinity,
+                ease: 'linear',
+              }}
+              style={{ transformOrigin: '500px 300px' }}
+            />
+          ))}
+
+          {/* Encrypted packet travelling on a curved path */}
+          <motion.path
+            d="M 100 320 Q 500 40 900 320"
+            stroke="url(#gold-stroke)"
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            strokeDasharray="4 16"
+            initial={{ pathLength: 0 }}
+            animate={
+              prefersReducedMotion
+                ? { pathLength: 1 }
+                : { pathLength: [0, 1, 1], opacity: [0.2, 0.9, 0.2] }
+            }
+            transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
           />
-        </motion.div>
 
-        {/* Curved Path and Animation */}
-        <div className="flex-1 relative h-64 mx-4">
-          <svg className="w-full h-full" viewBox="0 0 400 200" fill="none" preserveAspectRatio="none">
-            {/* Background Path */}
-            <path 
-              d="M 0 100 Q 200 0 400 100" 
-              stroke="currentColor" 
-              strokeWidth="2" 
-              strokeDasharray="8 8" 
-              className="text-zinc-800"
-            />
-            
-            {/* Animated Dotted Path */}
-            <motion.path 
-              d="M 0 100 Q 200 0 400 100" 
-              stroke="#c49a45" 
-              strokeWidth="3" 
-              strokeDasharray="1 15" 
-              strokeLinecap="round"
-              initial={{ pathLength: 0, opacity: 0 }}
-              animate={{ 
-                pathLength: [0, 1],
-                opacity: [0, 1, 0],
-                pathOffset: [0, 1]
-              }}
-              transition={{ 
-                duration: 3, 
-                repeat: Infinity, 
-                ease: "linear" 
-              }}
-            />
-          </svg>
+          {/* Central glow */}
+          <circle cx="500" cy="300" r="180" fill="url(#core-glow)" />
+        </svg>
 
-          {/* Moving Lock Icon */}
-          <motion.div
-            style={{ offsetPath: "path('M 0 100 Q 200 0 400 100')" }}
-            animate={{ 
-              offsetDistance: ["0%", "100%"],
-              opacity: [0, 1, 1, 0]
-            }}
-            transition={{ 
-              duration: 3, 
-              repeat: Infinity, 
-              ease: "easeInOut" 
-            }}
-            className="absolute top-0 left-0 w-8 h-8 bg-brand-blue border border-brand-gold rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(196,154,69,0.5)]"
-          >
-            <Lock className="w-4 h-4 text-brand-gold" />
-          </motion.div>
-        </div>
-
-        {/* Right Phone */}
-        <motion.div 
-          initial={{ x: 50, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          transition={{ duration: 1, ease: "easeOut" }}
-          className="relative"
+        {/* Pulsing lock core */}
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0 }}
+          animate={
+            prefersReducedMotion
+              ? { scale: 1, opacity: 0.7 }
+              : { scale: [0.95, 1.05, 0.95], opacity: [0.6, 0.95, 0.6] }
+          }
+          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+          className="relative flex h-20 w-20 items-center justify-center rounded-3xl border border-[color:var(--color-brand-gold)]/40 bg-[var(--bg-elevated)]/70 shadow-[0_0_60px_0_oklch(78%_0.14_82_/_0.35)] backdrop-blur-xl"
         >
-          <Smartphone className="w-24 h-24 md:w-32 md:h-32 text-brand-blue" />
-          <motion.div 
-            animate={{ scale: [1, 1.2, 1] }}
-            transition={{ duration: 2, repeat: Infinity, delay: 1.5 }}
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-brand-gold rounded-full blur-sm"
-          />
+          <Lock className="h-8 w-8 text-[color:var(--color-brand-gold)]" />
         </motion.div>
-
       </div>
     </div>
   );
