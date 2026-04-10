@@ -2,7 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Shield, Loader2, KeyRound } from 'lucide-react';
+import Image from 'next/image';
+import {
+  Shield,
+  Loader2,
+  KeyRound,
+  Eye,
+  EyeOff,
+  ArrowRight,
+  ChevronLeft,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import GoogleRecaptcha from '@/components/auth/google-recaptcha';
 import ThemeToggleButton from '@/components/ThemeToggleButton';
@@ -17,11 +26,16 @@ type PublicSettings = {
 };
 
 const toFriendlyError = (error: unknown) => {
-  const message = typeof error === 'string' ? error : 'Sign-in failed. Please try again.';
-  if (/invalid|incorrect|wrong/i.test(message)) return 'Your username or password is incorrect.';
-  if (/captcha/i.test(message)) return 'Please complete the security check and try again.';
-  if (/challenge|expired|missing/i.test(message)) return 'Your verification step expired. Please sign in again.';
-  if (/rate|too many/i.test(message)) return 'Too many attempts. Please wait a moment and try again.';
+  const message =
+    typeof error === 'string' ? error : 'Sign-in failed. Please try again.';
+  if (/invalid|incorrect|wrong/i.test(message))
+    return 'Your username or password is incorrect.';
+  if (/captcha/i.test(message))
+    return 'Please complete the security check and try again.';
+  if (/challenge|expired|missing/i.test(message))
+    return 'Your verification step expired. Please sign in again.';
+  if (/rate|too many/i.test(message))
+    return 'Too many attempts. Please wait a moment and try again.';
   return message;
 };
 
@@ -41,7 +55,9 @@ export default function LoginPageClient({ nextPath }: LoginPageClientProps) {
   const [totpCode, setTotpCode] = useState('');
   const [localCaptchaAnswer, setLocalCaptchaAnswer] = useState('');
   const [captchaToken, setCaptchaToken] = useState('');
-  const [phaseMessage, setPhaseMessage] = useState('Enter your username and password.');
+  const [phaseMessage, setPhaseMessage] = useState(
+    'Enter your username and password.',
+  );
   const [publicSettings, setPublicSettings] = useState<PublicSettings>({
     isCaptchaEnabled: false,
     captchaProvider: 'recaptcha',
@@ -61,9 +77,10 @@ export default function LoginPageClient({ nextPath }: LoginPageClientProps) {
           setPublicSettings({
             isCaptchaEnabled: Boolean(data.settings.isCaptchaEnabled),
             captchaProvider: data.settings.captchaProvider,
-            recaptchaSiteKey: typeof data.settings.recaptchaSiteKey === 'string'
-              ? data.settings.recaptchaSiteKey
-              : null,
+            recaptchaSiteKey:
+              typeof data.settings.recaptchaSiteKey === 'string'
+                ? data.settings.recaptchaSiteKey
+                : null,
             localCaptcha: data.settings.localCaptcha ?? null,
             oauthProviders: {
               google: Boolean(data.settings.oauthProviders?.google),
@@ -93,8 +110,14 @@ export default function LoginPageClient({ nextPath }: LoginPageClientProps) {
         body: JSON.stringify({
           username,
           password,
-          captchaToken: publicSettings.captchaProvider === 'local' ? localCaptchaAnswer : captchaToken,
-          captchaId: publicSettings.captchaProvider === 'local' ? publicSettings.localCaptcha?.captchaId : undefined,
+          captchaToken:
+            publicSettings.captchaProvider === 'local'
+              ? localCaptchaAnswer
+              : captchaToken,
+          captchaId:
+            publicSettings.captchaProvider === 'local'
+              ? publicSettings.localCaptcha?.captchaId
+              : undefined,
         }),
       });
       const data = await res.json();
@@ -133,7 +156,11 @@ export default function LoginPageClient({ nextPath }: LoginPageClientProps) {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: pending2FAUserId, token: totpCode, challengeId: pending2FAChallengeId }),
+        body: JSON.stringify({
+          userId: pending2FAUserId,
+          token: totpCode,
+          challengeId: pending2FAChallengeId,
+        }),
       });
       const data = await res.json();
       if (!res.ok || data.error) {
@@ -143,7 +170,9 @@ export default function LoginPageClient({ nextPath }: LoginPageClientProps) {
           setShow2FA(false);
           setPending2FAChallengeId('');
           setPending2FAUserId('');
-          setPhaseMessage('Your verification session expired. Please sign in again.');
+          setPhaseMessage(
+            'Your verification session expired. Please sign in again.',
+          );
         }
       } else if (data.success) {
         router.replace(nextPath || '/chat');
@@ -155,73 +184,353 @@ export default function LoginPageClient({ nextPath }: LoginPageClientProps) {
     }
   };
 
-  if (show2FA && pending2FAChallengeId) {
-    return <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4"><div className="w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--bg-secondary)] p-8 shadow-2xl">
-        <div className="mb-4 flex items-center justify-between"><LanguageSelector /><ThemeToggleButton /></div><div className="flex justify-center mb-8"><div className="w-16 h-16 bg-brand-gold/10 rounded-full flex items-center justify-center"><KeyRound className="w-8 h-8 text-brand-gold" /></div></div><h2 className="text-2xl font-bold text-center text-zinc-50 mb-2">Almost there</h2><p className="text-zinc-400 text-center text-sm mb-3">Enter the 6-digit code from your authenticator app.</p><p className="text-zinc-500 text-center text-xs mb-8">{phaseMessage}</p>{error && <div className="bg-red-500/10 border border-red-500/50 text-red-500 text-sm p-3 rounded-xl mb-6 text-center">{error}</div>}<form onSubmit={handle2FAVerify} className="space-y-4"><div><label className="block text-sm font-medium text-zinc-400 mb-1">Verification code</label><input type="text" value={totpCode} onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-50 text-center text-2xl tracking-[0.5em] font-mono focus:outline-none focus:border-brand-gold transition-colors" placeholder="000000" required maxLength={6} autoFocus autoComplete="one-time-code" inputMode="numeric" /></div><button type="submit" disabled={isLoading || totpCode.length !== 6} className="w-full bg-brand-gold hover:bg-brand-gold/90 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-950 font-semibold py-3 rounded-xl transition-colors mt-6 flex items-center justify-center gap-2">{isLoading ? <><Loader2 className="w-5 h-5 animate-spin" />Verifying…</> : 'Verify and continue'}</button></form><button onClick={() => { setShow2FA(false); setTotpCode(''); setError(''); setPhaseMessage('Enter your username and password.'); }} className="w-full text-center text-zinc-500 text-sm mt-4 hover:text-zinc-300">Back to sign in</button></div></div>;
-  }
-
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-md rounded-2xl border border-[var(--border)] bg-[var(--bg-secondary)] p-8 shadow-2xl">
-        <div className="mb-4 flex items-center justify-between"><LanguageSelector /><ThemeToggleButton /></div>
-        <div className="flex justify-center mb-8"><div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center"><Shield className="w-8 h-8 text-emerald-500" /></div></div>
-        <h2 className="text-2xl font-bold text-center text-zinc-50 mb-2">Welcome back</h2>
-        <p className="text-zinc-500 text-center text-xs mb-8">{phaseMessage}</p>
-        {error && <div className="bg-red-500/10 border border-red-500/50 text-red-500 text-sm p-3 rounded-xl mb-6 text-center">{error}</div>}
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div><label className="block text-sm font-medium text-zinc-400 mb-1">Username</label><input type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-50 focus:outline-none focus:border-emerald-500 transition-colors" placeholder="e.g. ehsanking" required disabled={isLoading} /></div>
-          <div>
-            <label className="block text-sm font-medium text-zinc-400 mb-1">Password</label>
-            <div className="relative">
-              <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 pr-20 text-zinc-50 focus:outline-none focus:border-emerald-500 transition-colors" placeholder="********" required disabled={isLoading} autoComplete="current-password" autoCorrect="off" autoCapitalize="none" spellCheck={false} />
-              <button type="button" onClick={() => setShowPassword((prev) => !prev)} className="absolute inset-y-0 right-3 text-xs text-zinc-400 hover:text-zinc-200 disabled:opacity-50" disabled={isLoading} aria-label={showPassword ? 'Hide password' : 'Show password'}>
-                {showPassword ? 'Hide' : 'Show'}
+    <div className="relative flex min-h-[100dvh] w-full items-center justify-center px-4 py-12">
+      {/* Ambient background */}
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-aurora opacity-60 dark:opacity-35" />
+      <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-mesh opacity-50 dark:opacity-20" />
+
+      {/* Back to home */}
+      <Link
+        href="/"
+        className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]/70 px-3 py-2 text-xs font-medium text-[var(--text-secondary)] backdrop-blur hover:text-[var(--text-primary)] sm:left-6 sm:top-6"
+      >
+        <ChevronLeft className="h-4 w-4" />
+        Home
+      </Link>
+
+      <div
+        className="glass-strong relative w-full max-w-md overflow-hidden rounded-3xl p-7 sm:p-9"
+        style={{ animation: 'var(--animate-scale-in)' }}
+      >
+        {/* Header controls */}
+        <div className="mb-6 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2">
+            <div className="relative h-8 w-8">
+              <Image
+                src="/logo.png"
+                alt="Elahe Messenger"
+                fill
+                sizes="32px"
+                className="object-contain"
+                unoptimized
+              />
+            </div>
+            <span className="text-sm font-semibold tracking-tight">
+              Elahe <span className="text-gradient-brand">Messenger</span>
+            </span>
+          </Link>
+          <div className="flex items-center gap-2">
+            <LanguageSelector />
+            <ThemeToggleButton />
+          </div>
+        </div>
+
+        {show2FA && pending2FAChallengeId ? (
+          <>
+            <div className="mb-6 flex flex-col items-center text-center">
+              <div className="relative mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] shadow-inner">
+                <KeyRound className="h-6 w-6 text-[var(--color-brand-gold)]" />
+              </div>
+              <h2 className="text-2xl font-semibold tracking-tight">Two-step verification</h2>
+              <p className="mt-1.5 text-sm text-[var(--text-secondary)]">
+                Enter the 6-digit code from your authenticator app.
+              </p>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">{phaseMessage}</p>
+            </div>
+
+            {error && <ErrorBanner message={error} />}
+
+            <form onSubmit={handle2FAVerify} className="space-y-4">
+              <div>
+                <label className="sr-only">Verification code</label>
+                <input
+                  type="text"
+                  value={totpCode}
+                  onChange={(e) =>
+                    setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))
+                  }
+                  className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-primary)]/80 px-4 py-4 text-center font-mono text-2xl tracking-[0.5em] text-[var(--text-primary)] backdrop-blur transition-colors focus:border-[var(--accent)] focus:outline-none"
+                  placeholder="000000"
+                  required
+                  maxLength={6}
+                  autoFocus
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isLoading || totpCode.length !== 6}
+                className="btn-modern flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] py-3.5 text-sm font-semibold text-white shadow-lg shadow-[color:var(--accent-soft)] hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Verifying…
+                  </>
+                ) : (
+                  <>
+                    Verify &amp; continue
+                    <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
               </button>
+            </form>
+            <button
+              type="button"
+              onClick={() => {
+                setShow2FA(false);
+                setTotpCode('');
+                setError('');
+                setPhaseMessage('Enter your username and password.');
+              }}
+              className="mt-4 w-full text-center text-sm text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]"
+            >
+              ← Back to sign in
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="mb-6 flex flex-col items-center text-center">
+              <div className="relative mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] shadow-inner">
+                <Shield className="h-6 w-6 text-[var(--success)]" />
+              </div>
+              <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
+              <p className="mt-1.5 text-sm text-[var(--text-secondary)]">
+                Sign in to your encrypted account.
+              </p>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">{phaseMessage}</p>
             </div>
-            <div className="mt-2 text-right"><Link href="/auth/recover" className="text-xs text-emerald-400 hover:underline">Forgot password?</Link></div>
-          </div>
-          <button type="submit" disabled={isLoading || (publicSettings.isCaptchaEnabled && ((publicSettings.captchaProvider === 'local' && !localCaptchaAnswer.trim()) || (publicSettings.captchaProvider !== 'local' && !captchaToken)))} className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-950 font-semibold py-3 rounded-xl transition-colors mt-6 flex items-center justify-center gap-2">{isLoading ? <><Loader2 className="w-5 h-5 animate-spin" />Signing in…</> : 'Sign in securely'}</button>
-          {publicSettings.isCaptchaEnabled && publicSettings.captchaProvider === 'recaptcha' && publicSettings.recaptchaSiteKey && <GoogleRecaptcha siteKey={publicSettings.recaptchaSiteKey} onTokenChange={setCaptchaToken} disabled={isLoading} />}
-          {publicSettings.isCaptchaEnabled && publicSettings.captchaProvider === 'local' && publicSettings.localCaptcha && (
-            <div className="space-y-2">
-              <p className="text-xs text-zinc-400">Security check: {publicSettings.localCaptcha.prompt}</p>
-              <input type="text" value={localCaptchaAnswer} onChange={(e) => setLocalCaptchaAnswer(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-zinc-50 focus:outline-none focus:border-emerald-500 transition-colors" placeholder="Type your answer" required />
-            </div>
-          )}
-        </form>
-        {(publicSettings.oauthProviders?.google || publicSettings.oauthProviders?.github || publicSettings.oauthProviders?.oidc) && (
-          <div className="mt-5 space-y-2">
-            <p className="text-xs text-zinc-500 text-center">Or continue with</p>
-            <div className="grid grid-cols-1 gap-2">
-              {publicSettings.oauthProviders?.google && (
-                <a
-                  href={`/api/auth/signin/google?callbackUrl=${encodeURIComponent('/api/auth/oauth/finalize')}`}
-                  className="w-full text-center bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-100 font-medium py-2.5 rounded-xl transition-colors"
-                >
-                  Sign in with Google
-                </a>
-              )}
-              {publicSettings.oauthProviders?.github && (
-                <a
-                  href={`/api/auth/signin/github?callbackUrl=${encodeURIComponent('/api/auth/oauth/finalize')}`}
-                  className="w-full text-center bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-100 font-medium py-2.5 rounded-xl transition-colors"
-                >
-                  Sign in with GitHub
-                </a>
-              )}
-              {publicSettings.oauthProviders?.oidc && (
-                <a
-                  href={`/api/auth/signin/oidc?callbackUrl=${encodeURIComponent('/api/auth/oauth/finalize')}`}
-                  className="w-full text-center bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-100 font-medium py-2.5 rounded-xl transition-colors"
-                >
-                  Sign in with SSO
-                </a>
-              )}
-            </div>
-          </div>
+
+            {error && <ErrorBanner message={error} />}
+
+            <form onSubmit={handleLogin} className="space-y-4">
+              <FloatingField
+                id="login-username"
+                label="Username"
+                value={username}
+                onChange={setUsername}
+                required
+                disabled={isLoading}
+                autoComplete="username"
+                placeholder="e.g. ehsanking"
+              />
+
+              <div className="space-y-1.5">
+                <div className="relative">
+                  <FloatingField
+                    id="login-password"
+                    label="Password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={setPassword}
+                    required
+                    disabled={isLoading}
+                    autoComplete="current-password"
+                    placeholder="••••••••"
+                    trailing={
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((prev) => !prev)}
+                        className="p-1 text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] disabled:opacity-50"
+                        disabled={isLoading}
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </button>
+                    }
+                  />
+                </div>
+                <div className="flex justify-end">
+                  <Link
+                    href="/auth/recover"
+                    className="text-xs font-medium text-[var(--accent)] hover:underline"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={
+                  isLoading ||
+                  (publicSettings.isCaptchaEnabled &&
+                    ((publicSettings.captchaProvider === 'local' &&
+                      !localCaptchaAnswer.trim()) ||
+                      (publicSettings.captchaProvider !== 'local' && !captchaToken)))
+                }
+                className="btn-modern flex w-full items-center justify-center gap-2 rounded-2xl bg-[var(--accent)] py-3.5 text-sm font-semibold text-white shadow-lg shadow-[color:var(--accent-soft)] hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Signing in…
+                  </>
+                ) : (
+                  <>
+                    Sign in securely
+                    <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
+              </button>
+
+              {publicSettings.isCaptchaEnabled &&
+                publicSettings.captchaProvider === 'recaptcha' &&
+                publicSettings.recaptchaSiteKey && (
+                  <GoogleRecaptcha
+                    siteKey={publicSettings.recaptchaSiteKey}
+                    onTokenChange={setCaptchaToken}
+                    disabled={isLoading}
+                  />
+                )}
+              {publicSettings.isCaptchaEnabled &&
+                publicSettings.captchaProvider === 'local' &&
+                publicSettings.localCaptcha && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-[var(--text-secondary)]">
+                      Security check: {publicSettings.localCaptcha.prompt}
+                    </p>
+                    <input
+                      type="text"
+                      value={localCaptchaAnswer}
+                      onChange={(e) => setLocalCaptchaAnswer(e.target.value)}
+                      className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-primary)]/80 px-4 py-3 text-sm text-[var(--text-primary)] backdrop-blur focus:border-[var(--accent)] focus:outline-none"
+                      placeholder="Type your answer"
+                      required
+                    />
+                  </div>
+                )}
+            </form>
+
+            {(publicSettings.oauthProviders?.google ||
+              publicSettings.oauthProviders?.github ||
+              publicSettings.oauthProviders?.oidc) && (
+              <div className="mt-6">
+                <div className="relative my-5 flex items-center">
+                  <div className="h-px flex-1 bg-[var(--border)]" />
+                  <span className="mx-3 text-[11px] uppercase tracking-wider text-[var(--text-muted)]">
+                    or continue with
+                  </span>
+                  <div className="h-px flex-1 bg-[var(--border)]" />
+                </div>
+                <div className="space-y-2">
+                  {publicSettings.oauthProviders?.google && (
+                    <OAuthButton
+                      href={`/api/auth/signin/google?callbackUrl=${encodeURIComponent('/api/auth/oauth/finalize')}`}
+                      label="Continue with Google"
+                    />
+                  )}
+                  {publicSettings.oauthProviders?.github && (
+                    <OAuthButton
+                      href={`/api/auth/signin/github?callbackUrl=${encodeURIComponent('/api/auth/oauth/finalize')}`}
+                      label="Continue with GitHub"
+                    />
+                  )}
+                  {publicSettings.oauthProviders?.oidc && (
+                    <OAuthButton
+                      href={`/api/auth/signin/oidc?callbackUrl=${encodeURIComponent('/api/auth/oauth/finalize')}`}
+                      label="Continue with SSO"
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+
+            <p className="mt-7 text-center text-sm text-[var(--text-muted)]">
+              Don&apos;t have an account?{' '}
+              <Link
+                href={`/auth/register?next=${encodeURIComponent(nextPath)}`}
+                className="font-medium text-[var(--accent)] hover:underline"
+              >
+                Create one
+              </Link>
+            </p>
+          </>
         )}
-        <p className="text-center text-zinc-500 text-sm mt-8">Don&apos;t have an account? <Link href={`/auth/register?next=${encodeURIComponent(nextPath)}`} className="text-emerald-400 hover:underline">Create one</Link></p>
       </div>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Local helpers                                                     */
+/* ------------------------------------------------------------------ */
+
+function ErrorBanner({ message }: { message: string }) {
+  return (
+    <div
+      role="alert"
+      className="mb-4 rounded-2xl border border-[color:var(--danger)]/40 bg-[color:var(--danger)]/10 px-4 py-3 text-center text-sm text-[color:var(--danger)]"
+    >
+      {message}
+    </div>
+  );
+}
+
+type FloatingFieldProps = {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+  required?: boolean;
+  disabled?: boolean;
+  autoComplete?: string;
+  placeholder?: string;
+  trailing?: React.ReactNode;
+};
+
+function FloatingField({
+  id,
+  label,
+  value,
+  onChange,
+  type = 'text',
+  required,
+  disabled,
+  autoComplete,
+  placeholder,
+  trailing,
+}: FloatingFieldProps) {
+  return (
+    <div className="group relative">
+      <input
+        id={id}
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        required={required}
+        disabled={disabled}
+        autoComplete={autoComplete}
+        placeholder={placeholder ?? ' '}
+        className="peer w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-primary)]/80 px-4 pb-2.5 pt-6 text-sm text-[var(--text-primary)] backdrop-blur transition-colors placeholder:text-[var(--text-muted)] focus:border-[var(--accent)] focus:outline-none disabled:opacity-60"
+      />
+      <label
+        htmlFor={id}
+        className="pointer-events-none absolute start-4 top-2 text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]"
+      >
+        {label}
+      </label>
+      {trailing && (
+        <div className="absolute inset-y-0 end-3 flex items-center">{trailing}</div>
+      )}
+    </div>
+  );
+}
+
+function OAuthButton({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      className="btn-modern flex w-full items-center justify-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg-primary)]/70 py-3 text-sm font-medium text-[var(--text-primary)] backdrop-blur transition-colors hover:border-[var(--border-hover)] hover:bg-[var(--bg-tertiary)]"
+    >
+      {label}
+    </a>
   );
 }

@@ -72,14 +72,19 @@ export default function ConversationPanel({
 
   return (
     <header className="flex min-w-0 items-center gap-2">
-      <h2 className="truncate text-base font-semibold text-zinc-100">{title}</h2>
-      <span title={e2eeState.label} className="inline-flex shrink-0 items-center">
+      <h2 className="truncate text-base font-semibold tracking-tight text-[var(--text-primary)]">
+        {title}
+      </h2>
+      <span
+        title={e2eeState.label}
+        className="inline-flex shrink-0 items-center rounded-full border border-[var(--border)] bg-[var(--bg-secondary)] p-1"
+      >
         {e2eeState.icon}
       </span>
       {isVerifiedContact ? (
         <span
           title="Verified safety number"
-          className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400"
+          className="inline-flex items-center gap-1 rounded-full border border-[color:var(--success)]/40 bg-[color:var(--success)]/10 px-2 py-0.5 text-[10px] font-medium text-[color:var(--success)]"
         >
           <BadgeCheck className="h-3 w-3" aria-hidden="true" />
           Verified

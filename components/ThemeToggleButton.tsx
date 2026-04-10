@@ -12,9 +12,20 @@ export default function ThemeToggleButton({ className = '' }: { className?: stri
       type="button"
       onClick={toggleTheme}
       aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
-      className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:border-[var(--border-hover)] hover:text-[var(--text-primary)] ${className}`}
+      className={`group relative inline-flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]/70 text-[var(--text-secondary)] backdrop-blur transition-all hover:border-[var(--border-hover)] hover:text-[var(--text-primary)] ${className}`}
     >
-      {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+      <Sun
+        className={`absolute h-4 w-4 transition-all duration-300 ${
+          isDark
+            ? 'rotate-0 scale-100 opacity-100'
+            : '-rotate-90 scale-50 opacity-0'
+        }`}
+      />
+      <Moon
+        className={`absolute h-4 w-4 transition-all duration-300 ${
+          isDark ? 'rotate-90 scale-50 opacity-0' : 'rotate-0 scale-100 opacity-100'
+        }`}
+      />
     </button>
   );
 }

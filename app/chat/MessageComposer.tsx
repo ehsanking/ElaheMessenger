@@ -2,7 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Smile } from 'lucide-react';
+import { Smile, Send, Clock } from 'lucide-react';
 import type { Socket } from 'socket.io-client';
 import {
   decryptGroupMessage,
@@ -226,42 +226,86 @@ export default function MessageComposer({
   }, [conversation?.encrypted, conversation?.id, socket, tryDecryptPreview]);
 
   return (
-    <form onSubmit={submit} className="relative flex gap-2">
+    <form
+      onSubmit={submit}
+      className="relative flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg-secondary)]/70 p-1.5 shadow-sm backdrop-blur transition-colors focus-within:border-[var(--accent)]/60 focus-within:shadow-[0_12px_40px_-16px_oklch(58%_0.22_270_/_0.45)]"
+    >
       <input
         ref={inputRef}
         type="text"
         value={input}
         onChange={(event) => setInput(event.target.value)}
-        placeholder={conversation?.encrypted ? 'Write an encrypted group message…' : 'Write a message…'}
-        className="flex-1 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)]"
+        placeholder={
+          conversation?.encrypted
+            ? 'Write an encrypted group message…'
+            : 'Write a message…'
+        }
+        className="flex-1 bg-transparent px-3 py-2.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
       />
-      <select
-        value={ttlSeconds ?? ''}
-        onChange={(event) => setTtlSeconds(event.target.value ? Number(event.target.value) : null)}
-        aria-label="Disappearing timer"
-        className="rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-2 text-xs text-[var(--text-primary)]"
+
+      <div className="relative">
+        <label className="sr-only" htmlFor="composer-ttl">
+          Disappearing timer
+        </label>
+        <div className="relative">
+          <Clock className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--text-muted)]" />
+          <select
+            id="composer-ttl"
+            value={ttlSeconds ?? ''}
+            onChange={(event) =>
+              setTtlSeconds(event.target.value ? Number(event.target.value) : null)
+            }
+            aria-label="Disappearing timer"
+            className="appearance-none rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]/70 py-2 pl-7 pr-2 text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
+          >
+            {ttlOptions.map((option) => (
+              <option key={String(option)} value={option ?? ''}>
+                {option === null ? '∞' : `${option}s`}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        aria-label="Open emoji picker"
+        onClick={() => setEmojiOpen((prev) => !prev)}
+        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--bg-primary)]/70 text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
       >
-        {ttlOptions.map((option) => (
-          <option key={String(option)} value={option ?? ''}>
-            {option === null ? 'Permanent' : `${option}s`}
-          </option>
-        ))}
-      </select>
-      <button type="button" aria-label="Open emoji picker" onClick={() => setEmojiOpen((prev) => !prev)} className="rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] px-3 text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
         <Smile className="h-4 w-4" />
       </button>
       <VoiceRecorder onRecorded={sendVoiceMessage} />
-      <button type="submit" className="rounded-xl bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-hover)]">
-        Send
+      <button
+        type="submit"
+        disabled={!input.trim()}
+        className="btn-modern inline-flex h-9 items-center gap-1.5 rounded-xl bg-[var(--accent)] px-4 text-sm font-semibold text-white shadow-[0_6px_20px_-8px_oklch(58%_0.22_270_/_0.6)] hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <Send className="h-4 w-4" />
+        <span className="hidden sm:inline">Send</span>
       </button>
       {emojiOpen && (
-        <div className="absolute bottom-12 right-0 z-20 rounded-xl border border-[var(--border)] bg-[var(--bg-primary)] p-2 shadow-2xl">
+        <div className="absolute bottom-14 right-0 z-20 rounded-2xl border border-[var(--border)] bg-[var(--bg-elevated)] p-2 shadow-2xl backdrop-blur">
           {recent.length > 0 && (
             <div className="mb-2 flex gap-1 border-b border-[var(--border)] pb-2">
-              {recent.map((item) => <button key={item} type="button" onClick={() => addEmoji({ native: item })} className="rounded px-1.5 py-1 hover:bg-[var(--bg-tertiary)]">{item}</button>)}
+              {recent.map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  onClick={() => addEmoji({ native: item })}
+                  className="rounded-lg px-1.5 py-1 text-lg hover:bg-[var(--bg-tertiary)]"
+                >
+                  {item}
+                </button>
+              ))}
             </div>
           )}
-          <Picker data={async () => (await import('@emoji-mart/data')).default} onEmojiSelect={addEmoji} skinTonePosition="search" theme="dark" />
+          <Picker
+            data={async () => (await import('@emoji-mart/data')).default}
+            onEmojiSelect={addEmoji}
+            skinTonePosition="search"
+            theme="auto"
+          />
         </div>
       )}
     </form>
