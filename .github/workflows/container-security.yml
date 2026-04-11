@@ -13,6 +13,8 @@ permissions:
 jobs:
   trivy:
     runs-on: ubuntu-latest
+    env:
+      TRIVY_IMAGE: ghcr.io/aquasecurity/trivy:0.64.1
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -20,15 +22,44 @@ jobs:
       - name: Build image
         run: docker build -f Dockerfile -t elahe-messenger:scan .
 
+      # Pull the trivy scanner image directly instead of relying on
+      # aquasecurity/setup-trivy, which has been flaking on the GitHub
+      # release tarball download step ("found version ..." → exit 1).
+      # GHCR avoids Docker Hub anonymous-pull rate limits on runners.
+      - name: Pull Trivy scanner image (with retries)
+        run: |
+          set -eu
+          for attempt in 1 2 3 4; do
+            if docker pull "$TRIVY_IMAGE"; then
+              exit 0
+            fi
+            wait=$((2 ** attempt))
+            echo "trivy pull attempt ${attempt} failed, retrying in ${wait}s..." >&2
+            sleep "$wait"
+          done
+          echo "Failed to pull ${TRIVY_IMAGE} after 4 attempts." >&2
+          exit 1
+
       - name: Run Trivy scan
-        uses: aquasecurity/trivy-action@v0.32.0
-        with:
-          image-ref: elahe-messenger:scan
-          format: sarif
-          output: trivy-results.sarif
-          severity: CRITICAL,HIGH
+        run: |
+          set -eu
+          mkdir -p "${GITHUB_WORKSPACE}/.trivy-cache"
+          # --exit-code 0 keeps the step from failing on findings — the
+          # SARIF upload below is what gates via code-scanning alerts.
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "${GITHUB_WORKSPACE}/.trivy-cache:/root/.cache/" \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            -w /workspace \
+            "$TRIVY_IMAGE" image \
+              --format sarif \
+              --output trivy-results.sarif \
+              --severity CRITICAL,HIGH \
+              --exit-code 0 \
+              elahe-messenger:scan
 
       - name: Upload SARIF
+        if: always() && hashFiles('trivy-results.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-results.sarif
