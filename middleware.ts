@@ -36,7 +36,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // If session exists but user needs to change password, enforce setup-admin page
-  if (session?.needsPasswordChange && (pathname === CHAT_ROUTE || pathname === SETUP_ADMIN_ROUTE)) {
+  if (session?.needsPasswordChange && pathname === CHAT_ROUTE) {
     const response = NextResponse.redirect(new URL(SETUP_ADMIN_ROUTE, request.url));
     applySecurityHeaders(response.headers, cspNonce);
     return response;
