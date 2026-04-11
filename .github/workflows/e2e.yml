@@ -11,6 +11,20 @@ jobs:
   playwright:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres-ci-password-e2e
+      POSTGRES_DB: elahe_test
+      APP_DB_USER: elahe_app
+      APP_DB_PASSWORD: elahe-app-ci-password-e2e
+      DATABASE_URL: postgresql://elahe_app:elahe-app-ci-password-e2e@db:5432/elahe_test
+      JWT_SECRET: ci-e2e-jwt-secret-for-testing-purposes-only
+      SESSION_SECRET: ci-e2e-session-secret-for-testing-purposes
+      ENCRYPTION_KEY: ci-e2e-encryption-key-for-testing-purposes
+      DOWNLOAD_TOKEN_SECRET: ci-e2e-download-token-secret-for-testing
+      ADMIN_USERNAME: e2e-admin
+      APP_URL: http://localhost:3000
+      ALLOWED_ORIGINS: http://localhost:3000
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
