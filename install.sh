@@ -1846,10 +1846,8 @@ print_summary() {
   if [ -n "$summary_admin_username" ]; then
     echo "Admin login username: ${summary_admin_username}"
   fi
-  if [ "$ADMIN_AUTO_GENERATED" = true ] && [ -n "${ADMIN_PASSWORD_VALUE:-}" ]; then
-    echo "Admin login password: ${ADMIN_PASSWORD_VALUE}"
-  elif [ "$INSTALL_MODE" = "fresh" ] && [ "$ADMIN_AUTO_GENERATED" != true ]; then
-    echo "Admin login password: entered interactively (not printed)."
+  if [ "$INSTALL_MODE" = "fresh" ]; then
+    echo "Admin password is never printed."
   fi
   if [ "$INSTALL_MODE" = "upgrade" ]; then
     echo "Admin bootstrap env vars are create-only by default and do not overwrite an existing admin user."
