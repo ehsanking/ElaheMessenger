@@ -12,7 +12,7 @@ import { encryptSecret, isEncryptedSecret } from '@/lib/secret-encryption';
 import os from 'os';
 import fs from 'fs';
 import { getOnlineUsersCount } from '@/lib/presence';
-import { isEmailConfigured } from '@/lib/email';
+import { isEmailConfigured, isEmailConfiguredFromSettings, type EmailProvider } from '@/lib/email';
 
 const allowedRoles = new Set(['USER', 'ADMIN']);
 
@@ -390,7 +390,9 @@ export async function getAdminSettings() {
     const settings = await getOrSetCache('adminSettings', async () => {
       return getOrCreateAdminSettings();
     }, { namespace: 'admin-settings' });
-    return { success: true, settings, smtpConfigured: isEmailConfigured() };
+    // Use the sync helper so we don't need an extra DB round-trip.
+    const emailConfigured = isEmailConfiguredFromSettings(settings as unknown as Record<string, unknown>);
+    return { success: true, settings, smtpConfigured: emailConfigured };
   } catch (error) {
     logger.error('Failed to fetch admin settings.', {
       error: error instanceof Error ? error.message : String(error),
@@ -852,4 +854,131 @@ export async function getSystemOverview() {
     });
     return { error: 'Failed to fetch system overview' };
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Email provider configuration
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ALLOWED_PROVIDERS = new Set<EmailProvider>([
+  'none', 'smtp', 'brevo', 'resend', 'mailgun', 'sendgrid', 'postmark',
+]);
+
+export type UpdateEmailProviderInput = {
+  provider: EmailProvider;
+  fromAddress?: string;
+  fromName?: string;
+  apiKey?: string;
+  // Custom SMTP
+  smtpHost?: string;
+  smtpPort?: number;
+  smtpSecure?: boolean;
+  smtpUser?: string;
+  smtpPass?: string;
+  // Mailgun
+  mailgunDomain?: string;
+  mailgunRegion?: 'us' | 'eu';
+};
+
+/**
+ * Saves email provider configuration to AdminSettings.
+ * API keys and passwords are encrypted before storage.
+ */
+export async function updateEmailProviderSettings(
+  input: UpdateEmailProviderInput,
+): Promise<{ success?: true; error?: string }> {
+  try {
+    await requireAdminSession();
+  } catch {
+    return { error: 'Unauthorized' };
+  }
+
+  if (!ALLOWED_PROVIDERS.has(input.provider)) {
+    return { error: 'Invalid email provider.' };
+  }
+
+  // Basic required-field validation per provider
+  if (input.provider !== 'none' && input.provider !== 'smtp') {
+    if (!input.fromAddress?.trim()) return { error: 'From address is required.' };
+    if (!input.apiKey?.trim()) return { error: 'API key is required for this provider.' };
+  }
+  if (input.provider === 'smtp') {
+    if (!input.smtpHost?.trim()) return { error: 'SMTP host is required.' };
+    if (!input.smtpUser?.trim()) return { error: 'SMTP username is required.' };
+    if (!input.smtpPass?.trim()) return { error: 'SMTP password is required.' };
+    if (!input.fromAddress?.trim()) return { error: 'From address is required.' };
+  }
+  if (input.provider === 'mailgun') {
+    if (!input.mailgunDomain?.trim()) return { error: 'Mailgun sending domain is required.' };
+  }
+
+  // Validate email format for fromAddress
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (input.fromAddress && !emailRegex.test(input.fromAddress.trim())) {
+    return { error: 'From address must be a valid email.' };
+  }
+
+  try {
+    const encryptIfPresent = (value: string | undefined) =>
+      value?.trim() ? encryptSecret(value.trim()) : null;
+
+    const update: Record<string, unknown> = {
+      emailProvider: input.provider,
+      emailFromAddress: input.fromAddress?.trim() || null,
+      emailFromName: input.fromName?.trim() || null,
+      emailApiKey: encryptIfPresent(input.apiKey),
+      emailSmtpHost: input.smtpHost?.trim() || null,
+      emailSmtpPort: input.smtpPort ?? null,
+      emailSmtpSecure: Boolean(input.smtpSecure),
+      emailSmtpUser: input.smtpUser?.trim() || null,
+      emailSmtpPass: encryptIfPresent(input.smtpPass),
+      emailMailgunDomain: input.mailgunDomain?.trim() || null,
+      emailMailgunRegion: input.mailgunRegion === 'eu' ? 'eu' : 'us',
+    };
+
+    await upsertAdminSettings(update);
+    invalidateCache('adminSettings', 'admin-settings');
+    revalidatePath('/admin/settings');
+    return { success: true };
+  } catch (error) {
+    logger.error('Failed to save email provider settings.', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return { error: 'Failed to save email provider settings.' };
+  }
+}
+
+/**
+ * Sends a test email to the given address using the current provider config.
+ * Only callable by admins.
+ */
+export async function sendTestEmail(
+  to: string,
+): Promise<{ success?: true; error?: string }> {
+  try {
+    await requireAdminSession();
+  } catch {
+    return { error: 'Unauthorized' };
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!to?.trim() || !emailRegex.test(to.trim())) {
+    return { error: 'Enter a valid recipient email address.' };
+  }
+
+  // Import lazily to avoid circular dependencies at module level
+  const { sendEmail } = await import('@/lib/email');
+  const result = await sendEmail({
+    to: to.trim(),
+    subject: 'Elahe Messenger — Email configuration test',
+    html: `
+<div style="font-family:sans-serif;background:#09090b;padding:32px;border-radius:12px;max-width:480px;margin:auto;">
+  <h2 style="color:#fafafa;margin:0 0 12px;">Test email</h2>
+  <p style="color:#a1a1aa;margin:0;">This email confirms your Elahe Messenger email provider is configured correctly.</p>
+</div>`.trim(),
+    text: 'Test email: your Elahe Messenger email provider is configured correctly.',
+  });
+
+  if (!result.ok) return { error: result.error };
+  return { success: true };
 }

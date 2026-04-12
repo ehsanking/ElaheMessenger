@@ -368,6 +368,19 @@ model AdminSettings {
   rules              String? // System rules/TOS
   firebaseConfig     String? // JSON string containing Firebase keys
   requireEmailVerification Boolean @default(false) // Require users to verify email after registration
+
+  // Email provider configuration
+  emailProvider      String  @default("none")
+  emailFromAddress   String?
+  emailFromName      String?
+  emailApiKey        String?
+  emailSmtpHost      String?
+  emailSmtpPort      Int?
+  emailSmtpSecure    Boolean @default(false)
+  emailSmtpUser      String?
+  emailSmtpPass      String?
+  emailMailgunDomain String?
+  emailMailgunRegion String  @default("us")
 }
 
 model EmailVerification {

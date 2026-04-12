@@ -368,6 +368,19 @@ model AdminSettings {
   rules              String? // System rules/TOS
   firebaseConfig     String? // JSON string containing Firebase keys
   requireEmailVerification Boolean @default(false) // Require users to verify email after registration
+
+  // Email provider configuration
+  emailProvider      String  @default("none")  // none | smtp | brevo | resend | mailgun | sendgrid | postmark
+  emailFromAddress   String? // Sender email address
+  emailFromName      String? // Sender display name
+  emailApiKey        String? // Encrypted API key / SMTP key (provider-specific)
+  emailSmtpHost      String? // Custom SMTP host (provider: smtp)
+  emailSmtpPort      Int?    // Custom SMTP port (provider: smtp)
+  emailSmtpSecure    Boolean @default(false)   // Use implicit TLS (provider: smtp)
+  emailSmtpUser      String? // SMTP username (provider: smtp)
+  emailSmtpPass      String? // Encrypted SMTP password (provider: smtp)
+  emailMailgunDomain String? // Sending domain (provider: mailgun)
+  emailMailgunRegion String  @default("us")    // us | eu (provider: mailgun)
 }
 
 model EmailVerification {
