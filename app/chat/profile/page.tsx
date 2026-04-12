@@ -129,7 +129,7 @@ export default function UserProfile() {
           </Link>
           <h1 className="text-xl font-bold flex items-center gap-2">
             <div className="w-6 h-6 relative">
-              <Image src="https://s8.uupload.ir/files/transparent-logo_omst.png" alt="Logo" fill sizes="24px" className="object-contain" unoptimized />
+              <Image src="https://s8.uupload.ir/files/transparent-logo_omst.png" alt="Logo" fill sizes="24px" className="object-contain" />
             </div>
             Profile Settings
           </h1>
