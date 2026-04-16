@@ -40,7 +40,11 @@ export default function RegisterPageClient({ nextPath }: RegisterPageClientProps
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [email, setEmail] = useState('');
+  const [birthDay, setBirthDay] = useState('');
+  const [birthMonth, setBirthMonth] = useState('');
+  const [birthYear, setBirthYear] = useState('');
   const [emailTouched, setEmailTouched] = useState(false);
+  const [birthDateTouched, setBirthDateTouched] = useState(false);
   const [recoveryQuestion, setRecoveryQuestion] = useState('');
   const [recoveryAnswer, setRecoveryAnswer] = useState('');
   const [publicSettings, setPublicSettings] = useState<PublicSettings>({
@@ -106,6 +110,30 @@ export default function RegisterPageClient({ nextPath }: RegisterPageClientProps
     return score; // 0-4
   }, [passwordChecks]);
 
+  const birthDateError = useMemo(() => {
+    const day = Number.parseInt(birthDay, 10);
+    const month = Number.parseInt(birthMonth, 10);
+    const year = Number.parseInt(birthYear, 10);
+    if (!Number.isInteger(day) || !Number.isInteger(month) || !Number.isInteger(year)) {
+      return 'Enter your birth date (day / month / year).';
+    }
+    const candidate = new Date(Date.UTC(year, month - 1, day));
+    if (
+      candidate.getUTCFullYear() !== year
+      || candidate.getUTCMonth() !== month - 1
+      || candidate.getUTCDate() !== day
+    ) {
+      return 'Birth date is invalid.';
+    }
+    const minDate = new Date(Date.UTC(1900, 0, 1));
+    const now = new Date();
+    const maxDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    if (candidate < minDate || candidate > maxDate) {
+      return 'Birth date is out of allowed range.';
+    }
+    return '';
+  }, [birthDay, birthMonth, birthYear]);
+
   const status = useMemo(() => {
     if (stage === 'preparing-keys')
       return 'Step 1 of 2: Setting up your device security…';
@@ -156,8 +184,9 @@ export default function RegisterPageClient({ nextPath }: RegisterPageClientProps
     setUsernameTouched(true);
     setPasswordTouched(true);
     setEmailTouched(true);
+    setBirthDateTouched(true);
 
-    if (usernameError || passwordError || emailError) {
+    if (usernameError || passwordError || emailError || birthDateError) {
       return;
     }
 
@@ -189,6 +218,9 @@ export default function RegisterPageClient({ nextPath }: RegisterPageClientProps
         recoveryAnswer,
         captchaToken,
         email: trimmedEmail || undefined,
+        birthDay: Number.parseInt(birthDay, 10),
+        birthMonth: Number.parseInt(birthMonth, 10),
+        birthYear: Number.parseInt(birthYear, 10),
       });
 
       if (result?.error) {
@@ -217,6 +249,7 @@ export default function RegisterPageClient({ nextPath }: RegisterPageClientProps
     !!usernameError ||
     !!passwordError ||
     !!emailError ||
+    !!birthDateError ||
     !settingsLoaded ||
     settingsLoadFailed ||
     !publicSettings.isRegistrationEnabled ||
@@ -321,6 +354,44 @@ export default function RegisterPageClient({ nextPath }: RegisterPageClientProps
                 ? usernameError
                 : '3–24 characters. Letters, numbers, and underscore only.'}
             </p>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">Birth date</p>
+            <div className="grid grid-cols-3 gap-2">
+              <input
+                className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-primary)]/80 px-3 py-3 text-sm text-[var(--text-primary)] backdrop-blur focus:border-[var(--accent)] focus:outline-none"
+                placeholder="Day"
+                value={birthDay}
+                onBlur={() => setBirthDateTouched(true)}
+                onChange={(e) => setBirthDay(e.target.value.replace(/\D/g, '').slice(0, 2))}
+                inputMode="numeric"
+                required
+              />
+              <input
+                className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-primary)]/80 px-3 py-3 text-sm text-[var(--text-primary)] backdrop-blur focus:border-[var(--accent)] focus:outline-none"
+                placeholder="Month"
+                value={birthMonth}
+                onBlur={() => setBirthDateTouched(true)}
+                onChange={(e) => setBirthMonth(e.target.value.replace(/\D/g, '').slice(0, 2))}
+                inputMode="numeric"
+                required
+              />
+              <input
+                className="w-full rounded-2xl border border-[var(--border)] bg-[var(--bg-primary)]/80 px-3 py-3 text-sm text-[var(--text-primary)] backdrop-blur focus:border-[var(--accent)] focus:outline-none"
+                placeholder="Year"
+                value={birthYear}
+                onBlur={() => setBirthDateTouched(true)}
+                onChange={(e) => setBirthYear(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                inputMode="numeric"
+                required
+              />
+            </div>
+            {birthDateTouched && birthDateError ? (
+              <p className="text-xs text-[color:var(--warning)]">{birthDateError}</p>
+            ) : (
+              <p className="text-xs text-[var(--text-muted)]">Required for age-based profile visibility control.</p>
+            )}
           </div>
 
           <div className="space-y-2">

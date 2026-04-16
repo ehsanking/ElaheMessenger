@@ -84,6 +84,9 @@ type RegisterUserInput = {
   recoveryAnswer?: string;
   captchaToken?: string;
   email?: string;
+  birthDay?: number;
+  birthMonth?: number;
+  birthYear?: number;
 };
 
 type GetRecoveryQuestionInput = {
@@ -286,6 +289,9 @@ export async function registerUser(formData: RegisterUserInput) {
   const recoveryAnswer = typeof formData.recoveryAnswer === 'string' ? formData.recoveryAnswer : '';
   const captchaToken = asTrimmedString(formData.captchaToken);
   const email = typeof formData.email === 'string' ? formData.email.trim().toLowerCase() : '';
+  const birthDay = Number.isInteger(formData.birthDay) ? Number(formData.birthDay) : NaN;
+  const birthMonth = Number.isInteger(formData.birthMonth) ? Number(formData.birthMonth) : NaN;
+  const birthYear = Number.isInteger(formData.birthYear) ? Number(formData.birthYear) : NaN;
 
   if (!username || !password || !confirmPassword || !identityKeyPublic || !signedPreKey || !signedPreKeySig) {
     return { error: 'Missing required registration fields.' };
@@ -365,6 +371,26 @@ export async function registerUser(formData: RegisterUserInput) {
     return { error: 'Please enter a valid email address.' };
   }
 
+  if (!Number.isInteger(birthDay) || !Number.isInteger(birthMonth) || !Number.isInteger(birthYear)) {
+    return { error: 'Birth date is required.' };
+  }
+
+  const birthDate = new Date(Date.UTC(birthYear, birthMonth - 1, birthDay));
+  if (
+    birthDate.getUTCFullYear() !== birthYear ||
+    birthDate.getUTCMonth() !== birthMonth - 1 ||
+    birthDate.getUTCDate() !== birthDay
+  ) {
+    return { error: 'Birth date is invalid.' };
+  }
+
+  const minAllowedBirthDate = new Date(Date.UTC(1900, 0, 1));
+  const today = new Date();
+  const maxAllowedBirthDate = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+  if (birthDate < minAllowedBirthDate || birthDate > maxAllowedBirthDate) {
+    return { error: 'Birth date is out of allowed range.' };
+  }
+
   try {
     const existingUser = await prisma.user.findUnique({
       where: { username },
@@ -412,6 +438,7 @@ export async function registerUser(formData: RegisterUserInput) {
         recoveryQuestion: recoveryQuestion || null,
         recoveryAnswerHash,
         ...(email ? { email, emailVerified: false } : {}),
+        birthDate,
       },
     });
 

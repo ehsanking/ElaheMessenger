@@ -18,6 +18,9 @@ export async function POST(request: Request) {
     const recoveryAnswer = typeof body?.recoveryAnswer === 'string' ? body.recoveryAnswer : '';
     const captchaToken = typeof body?.captchaToken === 'string' ? body.captchaToken : '';
     const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+    const birthDay = Number.isInteger(body?.birthDay) ? body.birthDay : undefined;
+    const birthMonth = Number.isInteger(body?.birthMonth) ? body.birthMonth : undefined;
+    const birthYear = Number.isInteger(body?.birthYear) ? body.birthYear : undefined;
 
     if (!agreementPublicKey || !signingPublicKey || !signedPreKey || !signedPreKeySig) {
       return NextResponse.json({ error: 'Missing v2 registration bundle.' }, { status: 400 });
@@ -40,6 +43,9 @@ export async function POST(request: Request) {
       recoveryAnswer,
       captchaToken,
       email,
+      birthDay,
+      birthMonth,
+      birthYear,
     });
 
     if ('error' in result) {
