@@ -17,6 +17,7 @@ export default function UserProfile() {
   const [displayName, setDisplayName] = useState('');
   const [bio, setBio] = useState('');
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
+  const [showAge, setShowAge] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -53,6 +54,7 @@ export default function UserProfile() {
           setDisplayName(result.user.displayName || result.user.username || '');
           setBio(result.user.bio || '');
           setProfilePhoto(result.user.profilePhoto || null);
+          setShowAge(Boolean((result.user as any).showAge));
           setIs2FAEnabled(!!(result.user as any).totpEnabled);
           const mergedUser = { ...user, ...result.user };
           setCurrentUser(mergedUser);
@@ -103,6 +105,7 @@ export default function UserProfile() {
       displayName,
       bio,
       profilePhoto,
+      showAge,
     });
 
     setIsSaving(false);
@@ -204,6 +207,19 @@ export default function UserProfile() {
                 {currentUser?.role === 'ADMIN' && <div title="Admin"><Shield className="w-5 h-5 text-brand-gold" /></div>}
               </div>
               <p className="text-sm text-zinc-400 font-mono mt-1">@{currentUser?.username || 'user'}</p>
+              {currentUser?.birthDate ? (
+                <p className="text-xs text-zinc-500 mt-1">
+                  Age: {(() => {
+                    const birthDate = new Date(currentUser.birthDate);
+                    const now = new Date();
+                    let age = now.getUTCFullYear() - birthDate.getUTCFullYear();
+                    const monthDiff = now.getUTCMonth() - birthDate.getUTCMonth();
+                    const dayDiff = now.getUTCDate() - birthDate.getUTCDate();
+                    if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) age -= 1;
+                    return age;
+                  })()}
+                </p>
+              ) : null}
             </div>
           </div>
 
@@ -226,6 +242,18 @@ export default function UserProfile() {
               <p className="text-xs text-zinc-500 mt-2">
                 This is how other users will see you in chats and groups.
               </p>
+            </div>
+
+            <div>
+              <label className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={showAge}
+                  onChange={(e) => setShowAge(e.target.checked)}
+                  className="h-4 w-4 rounded border-zinc-700 bg-zinc-900 text-brand-gold focus:ring-brand-gold"
+                />
+                <span className="text-sm text-zinc-300">Show my age on public profile</span>
+              </label>
             </div>
 
             <div>

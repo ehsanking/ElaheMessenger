@@ -23,6 +23,8 @@ type PrivateSelfProfile = {
   badge: string | null;
   isVerified: boolean;
   totpEnabled: boolean;
+  birthDate: Date | null;
+  showAge: boolean;
 };
 
 type PublicUserProfile = {
@@ -35,6 +37,19 @@ type PublicUserProfile = {
   role: string;
   badge: string | null;
   isVerified: boolean;
+  age: number | null;
+};
+
+const computeAge = (birthDate: Date | null) => {
+  if (!birthDate) return null;
+  const today = new Date();
+  let age = today.getUTCFullYear() - birthDate.getUTCFullYear();
+  const monthDiff = today.getUTCMonth() - birthDate.getUTCMonth();
+  const dayDiff = today.getUTCDate() - birthDate.getUTCDate();
+  if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+    age -= 1;
+  }
+  return age >= 0 ? age : null;
 };
 
 async function logAuditAction(
@@ -86,6 +101,8 @@ export async function getUserProfile() {
         badge: true,
         isVerified: true,
         totpEnabled: true,
+        birthDate: true,
+        showAge: true,
       },
     });
 
@@ -116,6 +133,7 @@ export async function updateUserProfile(formData: {
   displayName?: string;
   bio?: string;
   profilePhoto?: string | null;
+  showAge?: boolean;
 }) {
   const session = await getSessionFromCookies();
   if (!session) {
@@ -127,6 +145,7 @@ export async function updateUserProfile(formData: {
   const bio = asTrimmedString(formData.bio);
   const profilePhoto =
     typeof formData.profilePhoto === 'string' ? formData.profilePhoto.trim() : formData.profilePhoto;
+  const showAge = typeof formData.showAge === 'boolean' ? formData.showAge : undefined;
 
   if (displayName && displayName.length > 50) {
     return { error: 'Display name must be 50 characters or less.' };
@@ -161,6 +180,7 @@ export async function updateUserProfile(formData: {
         displayName: displayName || null,
         bio: bio || null,
         profilePhoto: profilePhoto ?? null,
+        ...(typeof showAge === 'boolean' ? { showAge } : {}),
       },
       select: {
         id: true,
@@ -172,6 +192,8 @@ export async function updateUserProfile(formData: {
         role: true,
         badge: true,
         isVerified: true,
+        birthDate: true,
+        showAge: true,
       },
     });
 
@@ -179,6 +201,7 @@ export async function updateUserProfile(formData: {
       hasDisplayName: Boolean(displayName),
       hasBio: Boolean(bio),
       hasProfilePhoto: Boolean(profilePhoto),
+      showAgeUpdated: typeof showAge === 'boolean',
     });
 
     return { success: true, user: updatedUser };
@@ -212,6 +235,8 @@ export async function getPublicUserProfile(userId: string) {
         role: true,
         badge: true,
         isVerified: true,
+        birthDate: true,
+        showAge: true,
       },
     });
 
@@ -219,7 +244,21 @@ export async function getPublicUserProfile(userId: string) {
       return { error: 'User not found.' };
     }
 
-    return { success: true, user: user as PublicUserProfile };
+    return {
+      success: true,
+      user: {
+        id: user.id,
+        username: user.username,
+        numericId: user.numericId,
+        displayName: user.displayName,
+        bio: user.bio,
+        profilePhoto: user.profilePhoto,
+        role: user.role,
+        badge: user.badge,
+        isVerified: user.isVerified,
+        age: user.showAge ? computeAge(user.birthDate) : null,
+      } as PublicUserProfile,
+    };
   } catch (error) {
     logger.error('Get profile error.', {
       error: error instanceof Error ? error.message : String(error),

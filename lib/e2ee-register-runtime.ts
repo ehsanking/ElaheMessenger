@@ -10,6 +10,9 @@ export type RegisterV2Input = {
   recoveryAnswer: string;
   captchaToken?: string;
   email?: string;
+  birthDay: number;
+  birthMonth: number;
+  birthYear: number;
 };
 
 export async function registerUserWithBundleV2(input: RegisterV2Input) {

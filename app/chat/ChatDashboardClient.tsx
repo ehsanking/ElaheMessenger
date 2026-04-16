@@ -718,15 +718,28 @@ function ChatDashboardContent() {
     if (!currentUser) return;
     setIsLoadingAdmin(true);
     try {
+      const withTimeout = async <T,>(task: Promise<T>, label: string, timeoutMs = 12000): Promise<T | null> => {
+        let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+        const timeoutPromise = new Promise<null>((resolve) => {
+          timeoutHandle = setTimeout(() => {
+            console.warn(`Admin panel ${label} request timed out.`);
+            resolve(null);
+          }, timeoutMs);
+        });
+        const result = await Promise.race([task, timeoutPromise]);
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+        return result as T | null;
+      };
+
       const [usersRes, settingsRes, reportsRes, auditRes, overviewRes] = await Promise.all([
-        getAllUsers(),
-        getAdminSettings(),
-        getAllReports(),
-        getAuditLogs(),
-        getSystemOverview(),
+        withTimeout(getAllUsers(), 'users'),
+        withTimeout(getAdminSettings(), 'settings'),
+        withTimeout(getAllReports(), 'reports'),
+        withTimeout(getAuditLogs(), 'audit'),
+        withTimeout(getSystemOverview(), 'overview'),
       ]);
-      if ('success' in usersRes && usersRes.success) setAdminUsers(usersRes.users);
-      if ('success' in settingsRes && settingsRes.success) {
+      if (usersRes && 'success' in usersRes && usersRes.success) setAdminUsers(usersRes.users);
+      if (settingsRes && 'success' in settingsRes && settingsRes.success) {
         setAdminSettings((prev) => ({
           ...settingsRes.settings,
           oauthGoogleEnabled: typeof settingsRes.settings.oauthGoogleEnabled === 'boolean'
@@ -740,9 +753,9 @@ function ChatDashboardContent() {
             : (prev?.oauthOidcEnabled ?? false),
         }));
       }
-      if ('success' in reportsRes && reportsRes.success) setAdminReports(reportsRes.reports);
-      if ('success' in auditRes && auditRes.success) setAdminAuditLogs(auditRes.logs);
-      if ('success' in overviewRes && overviewRes.success) setAdminOverview(overviewRes.stats);
+      if (reportsRes && 'success' in reportsRes && reportsRes.success) setAdminReports(reportsRes.reports);
+      if (auditRes && 'success' in auditRes && auditRes.success) setAdminAuditLogs(auditRes.logs);
+      if (overviewRes && 'success' in overviewRes && overviewRes.success) setAdminOverview(overviewRes.stats);
     } catch (error) {
       console.error('Fetch admin data error:', error);
     } finally {
